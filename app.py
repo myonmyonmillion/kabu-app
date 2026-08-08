@@ -150,7 +150,6 @@ with st.sidebar.form("search_form"):
     
     mode_choice = "主要銘柄"
     if market_choice == "🇯🇵 日本株":
-        # 💡 修正ポイント: 日経225全銘柄を先に配置してデフォルトに設定
         mode_choice = st.radio("📊 銘柄モード (日本株)", ["日経225全銘柄", "主要銘柄"])
     else:
         st.write("📊 銘柄モード: 主要米国株 (TSM等含む)")
@@ -166,6 +165,8 @@ if "market_data" not in st.session_state or submitted:
         else:
             with st.spinner("日経225の銘柄リストを展開中..."):
                 target_tickers = get_nikkei225_tickers().copy()
+                # 💡 修正: 漏れている主要銘柄を確実に結合して上書き（225銘柄を網羅）
+                target_tickers.update(MAJOR_STOCKS_JP)
     else:
         target_tickers = MAJOR_STOCKS_US.copy()
         
@@ -257,7 +258,9 @@ with tab2:
             try:
                 stock = yf.Ticker(t)
                 hist = stock.history(period="1mo")
-                if hist.empty: continue
+                # 💡 修正: データ不足によるクラッシュ防止
+                if hist.empty or len(hist) < 20: 
+                    continue
                 
                 latest_price = hist['Close'].iloc[-1]
                 buy_price = row['買値']
@@ -308,22 +311,23 @@ with tab2:
             except Exception:
                 continue
                 
-        st.dataframe(pd.DataFrame(status_data), use_container_width=True)
+        if status_data:
+            st.dataframe(pd.DataFrame(status_data), use_container_width=True)
 
-        st.markdown("### 🧠 ポートフォリオ総合診断")
-        col_a, col_b, col_c = st.columns(3)
-        pf_len = len(status_data)
-        win_rate = (win_count / pf_len) * 100 if pf_len > 0 else 0
-        
-        col_a.metric("トータル含み損益", f"¥{total_profit:,.0f}")
-        col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
-        
-        if warning_count > 0:
-            col_c.error(f"⚠️ {warning_count}銘柄に警戒サインが出ています。損切りや利確を検討しましょう。")
-        elif pf_len > 0 and total_profit > 0:
-            col_c.success("🌟 非常に健全な状態です！このままトレンドに乗りましょう。")
-        else:
-            col_c.info("📊 経過観察中です。")
+            st.markdown("### 🧠 ポートフォリオ総合診断")
+            col_a, col_b, col_c = st.columns(3)
+            pf_len = len(status_data)
+            win_rate = (win_count / pf_len) * 100 if pf_len > 0 else 0
+            
+            col_a.metric("トータル含み損益", f"¥{total_profit:,.0f}")
+            col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
+            
+            if warning_count > 0:
+                col_c.error(f"⚠️ {warning_count}銘柄に警戒サインが出ています。損切りや利確を検討しましょう。")
+            elif pf_len > 0 and total_profit > 0:
+                col_c.success("🌟 非常に健全な状態です！このままトレンドに乗りましょう。")
+            else:
+                col_c.info("📊 経過観察中です。")
 
         if st.button("ポートフォリオを全件リセット", type="primary"):
             st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
@@ -336,114 +340,139 @@ with tab2:
 with tab3:
     st.header("📈 マルチタイムフレーム（複数時間軸）分析")
     if test_options:
-        mtf_ticker = st.selectbox(
-            "チャートを表示・分析する銘柄を検索・選択", 
-            test_options, 
-            key="mtf", 
-            index=0,
-            placeholder="銘柄名（日本語）を入力して検索"
-        )
+        # 💡 修正: st.form化することでIMEの途中確定バグと画面スクロールリセットを防止
+        with st.form("mtf_search_form"):
+            mtf_ticker_input = st.selectbox(
+                "チャートを表示・分析する銘柄を検索・選択", 
+                test_options, 
+                index=0,
+                placeholder="銘柄名（日本語）を入力して検索"
+            )
+            submit_mtf = st.form_submit_button("🔍 この銘柄のチャートを表示する")
         
-        if mtf_ticker:
-            t_mtf = mtf_ticker.split("(")[-1].replace(")", "")
+        # 状態を保存して、別のタブに行っても維持されるようにする
+        if submit_mtf:
+            st.session_state.mtf_ticker = mtf_ticker_input
+
+        current_mtf_ticker = st.session_state.get("mtf_ticker", test_options[0])
+
+        if current_mtf_ticker:
+            t_mtf = current_mtf_ticker.split("(")[-1].replace(")", "")
             stock = yf.Ticker(t_mtf)
-            df_daily = stock.history(period="6mo", interval="1d")
-            df_weekly = stock.history(period="2y", interval="1wk")
             
-            df_daily['RSI'] = ta.momentum.RSIIndicator(close=df_daily['Close'], window=14).rsi()
-            df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
-            macd = ta.trend.MACD(close=df_daily['Close'])
-            df_daily['MACD_Diff'] = macd.macd_diff()
+            # 💡 修正: SMA200を計算するためには200日分以上のデータが必要なため、periodを"2y"に変更
+            df_daily = stock.history(period="2y", interval="1d")
+            df_weekly = stock.history(period="5y", interval="1wk")
             
-            latest = df_daily.iloc[-1]
-            prev = df_daily.iloc[-2]
-            
-            fig = make_subplots(rows=2, cols=1, subplot_titles=(f"日足（短期のエントリー用） - {mtf_ticker}", f"週足（長期のトレンド確認用） - {mtf_ticker}"))
-            fig.add_trace(go.Candlestick(x=df_daily.index, open=df_daily['Open'], high=df_daily['High'], low=df_daily['Low'], close=df_daily['Close'], name="日足"), row=1, col=1)
-            fig.add_trace(go.Candlestick(x=df_weekly.index, open=df_weekly['Open'], high=df_weekly['High'], low=df_weekly['Low'], close=df_weekly['Close'], name="週足"), row=2, col=1)
-            fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("### 🤖 銘柄テクニカル診断（今買い時か？）")
-            
-            rsi_val = latest['RSI']
-            is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
-            is_uptrend = latest['Close'] > latest['SMA200']
-            
-            analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
-            
-            if is_uptrend:
-                analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
-            else:
-                analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
+            if not df_daily.empty and len(df_daily) >= 200:
+                df_daily['RSI'] = ta.momentum.RSIIndicator(close=df_daily['Close'], window=14).rsi()
+                df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
+                macd = ta.trend.MACD(close=df_daily['Close'])
+                df_daily['MACD_Diff'] = macd.macd_diff()
                 
-            if rsi_val <= 35:
-                analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙う絶好のチャンス（買い時）の可能性があります。\n"
-            elif rsi_val >= 70:
-                analysis_text += f"🔥 **過熱感 (RSI: {rsi_val:.1f}):** 70を超えており「買われすぎ」です。今からの新規購入は高値掴みのリスクがあるため見送りを推奨します。\n"
-            else:
-                analysis_text += f"⚖️ **過熱感 (RSI: {rsi_val:.1f}):** 中立な状態です。極端な割安感はありません。\n"
+                latest = df_daily.iloc[-1]
+                prev = df_daily.iloc[-2]
                 
-            if is_gc:
-                analysis_text += "🟢 **MACD:** **ゴールデンクロスが発生しています！** 短期的な下落が終わり、上昇トレンドに転換する初動のサインが出ています。強気の買いシグナルです。\n"
-            elif latest['MACD_Diff'] > 0:
-                analysis_text += "📈 **MACD:** 短期的には上昇の勢い（モメンタム）が強い状態を維持しています。\n"
-            else:
-                analysis_text += "📉 **MACD:** 短期的には下落方向への圧力がかかっています。底を打つまで様子見が無難です。\n"
+                fig = make_subplots(rows=2, cols=1, subplot_titles=(f"日足（短期のエントリー用） - {current_mtf_ticker}", f"週足（長期のトレンド確認用） - {current_mtf_ticker}"))
+                fig.add_trace(go.Candlestick(x=df_daily.index, open=df_daily['Open'], high=df_daily['High'], low=df_daily['Low'], close=df_daily['Close'], name="日足"), row=1, col=1)
+                fig.add_trace(go.Candlestick(x=df_weekly.index, open=df_weekly['Open'], high=df_weekly['High'], low=df_weekly['Low'], close=df_weekly['Close'], name="週足"), row=2, col=1)
+                fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
+                st.plotly_chart(fig, use_container_width=True)
 
-            st.info(analysis_text)
+                st.markdown("### 🤖 銘柄テクニカル診断（今買い時か？）")
+                
+                rsi_val = latest['RSI']
+                is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
+                is_uptrend = latest['Close'] > latest['SMA200']
+                
+                analysis_text = f"**【{current_mtf_ticker} の現状分析】**\n\n"
+                
+                if is_uptrend:
+                    analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
+                else:
+                    analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
+                    
+                if rsi_val <= 35:
+                    analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙う絶好のチャンス（買い時）の可能性があります。\n"
+                elif rsi_val >= 70:
+                    analysis_text += f"🔥 **過熱感 (RSI: {rsi_val:.1f}):** 70を超えており「買われすぎ」です。今からの新規購入は高値掴みのリスクがあるため見送りを推奨します。\n"
+                else:
+                    analysis_text += f"⚖️ **過熱感 (RSI: {rsi_val:.1f}):** 中立な状態です。極端な割安感はありません。\n"
+                    
+                if is_gc:
+                    analysis_text += "🟢 **MACD:** **ゴールデンクロスが発生しています！** 短期的な下落が終わり、上昇トレンドに転換する初動のサインが出ています。強気の買いシグナルです。\n"
+                elif latest['MACD_Diff'] > 0:
+                    analysis_text += "📈 **MACD:** 短期的には上昇の勢い（モメンタム）が強い状態を維持しています。\n"
+                else:
+                    analysis_text += "📉 **MACD:** 短期的には下落方向への圧力がかかっています。底を打つまで様子見が無難です。\n"
+
+                st.info(analysis_text)
+            else:
+                st.warning("チャートを描画するための十分なデータ（上場から200日以上）が取得できませんでした。")
 
 # ------------------------------------------
 # TAB 4: ミニ株・資金配分シミュレーション
 # ------------------------------------------
 with tab4:
     st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
-    st.markdown("全体予算(円)を入力してください。")
-    
-    total_budget = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
+    st.markdown("全体予算(円)を入力し、構成したい銘柄を選択してください。")
     
     if test_options:
-        selected_for_sim = st.multiselect(
-            "分散投資したい銘柄を検索・選択", 
-            test_options, 
-            default=test_options[:2] if len(test_options)>1 else test_options,
-            placeholder="銘柄名（日本語）を入力して検索"
-        )
-        
-        sim_data = []
-        used_budget_jpy = 0
-        for sel in selected_for_sim:
-            t_sim = sel.split("(")[-1].replace(")", "")
-            t_data = next((r for r in market_data if r['Ticker'] == t_sim), None)
-            if t_data:
-                price = t_data['現在値']
-                currency = t_data['通貨']
-                shares = st.number_input(f"{sel} の購入株数", min_value=0, value=10, key=f"sim_{t_sim}")
-                
-                cost_local = price * shares
-                cost_jpy = cost_local * usd_jpy_rate if currency == "USD" else cost_local
-                used_budget_jpy += cost_jpy
-                
-                sim_data.append({
-                    "銘柄": sel, 
-                    "1株価格": f"{price:,.2f} {currency}", 
-                    "株数": shares, 
-                    "必要資金(円換算)": f"¥{round(cost_jpy):,}"
-                })
-        
-        if sim_data:
-            st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
+        # 💡 修正: ここもst.form化してIME途中確定バグを防止
+        with st.form("sim_setup_form"):
+            total_budget_input = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
+            selected_for_sim_input = st.multiselect(
+                "分散投資したい銘柄を検索・選択", 
+                test_options, 
+                default=test_options[:2] if len(test_options)>1 else test_options,
+                placeholder="銘柄名（日本語）を入力して検索"
+            )
+            submit_sim = st.form_submit_button("✅ 銘柄と予算を確定して株数を調整する")
+
+        if submit_sim:
+            st.session_state.sim_budget = total_budget_input
+            st.session_state.sim_stocks = selected_for_sim_input
+
+        current_sim_budget = st.session_state.get("sim_budget", 2000000)
+        current_sim_stocks = st.session_state.get("sim_stocks", test_options[:2] if len(test_options)>1 else test_options)
+
+        if current_sim_stocks:
+            sim_data = []
+            used_budget_jpy = 0
             
-            remaining = total_budget - used_budget_jpy
-            col1, col2 = st.columns(2)
-            col1.metric("使用資金(円)", f"¥{used_budget_jpy:,.0f}")
+            st.markdown("#### 🛒 各銘柄の購入株数を調整")
+            for sel in current_sim_stocks:
+                t_sim = sel.split("(")[-1].replace(")", "")
+                t_data = next((r for r in market_data if r['Ticker'] == t_sim), None)
+                if t_data:
+                    price = t_data['現在値']
+                    currency = t_data['通貨']
+                    shares = st.number_input(f"{sel} の購入株数", min_value=0, value=10, key=f"sim_{t_sim}")
+                    
+                    cost_local = price * shares
+                    cost_jpy = cost_local * usd_jpy_rate if currency == "USD" else cost_local
+                    used_budget_jpy += cost_jpy
+                    
+                    sim_data.append({
+                        "銘柄": sel, 
+                        "1株価格": f"{price:,.2f} {currency}", 
+                        "株数": shares, 
+                        "必要資金(円換算)": f"¥{round(cost_jpy):,}"
+                    })
             
-            if remaining >= 0:
-                col2.metric("予算残高(円)", f"¥{remaining:,.0f}")
-                st.success(f"予算内に収まっています！残り {remaining:,.0f} 円は現金余力として待機できます。")
-            else:
-                col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
-                st.error("予算をオーバーしています。購入株数を調整してください。")
+            if sim_data:
+                st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
+                
+                remaining = current_sim_budget - used_budget_jpy
+                col1, col2 = st.columns(2)
+                col1.metric("使用資金(円)", f"¥{used_budget_jpy:,.0f}")
+                
+                if remaining >= 0:
+                    col2.metric("予算残高(円)", f"¥{remaining:,.0f}")
+                    st.success(f"予算内に収まっています！残り {remaining:,.0f} 円は現金余力として待機できます。")
+                else:
+                    col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
+                    st.error("予算をオーバーしています。購入株数を調整してください。")
 
 # ------------------------------------------
 # TAB 5: セクター（業種）分析
