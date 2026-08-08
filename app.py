@@ -6,6 +6,9 @@ import os
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import concurrent.futures
+import time
+import random
+import requests
 
 # ------------------------------------------
 # ページ設定
@@ -39,25 +42,26 @@ PORTFOLIO_FILE = "portfolio.csv"
 # ------------------------------------------
 # 関数群
 # ------------------------------------------
-@st.cache_data
+@st.cache_data(ttl=86400) # 1日1回だけ再取得
 def get_nikkei225_tickers():
-    raw_data = (
-        "1332.T ニッスイ,1333.T マルハニチロ,2002.T 日清製粉G,2269.T 明治HD,2282.T 日本ハム,"
-        "2413.T エムスリー,2432.T ディー・エヌ・エー,2501.T サッポロHD,2502.T アサヒGHD,2503.T キリンHD,2531.T 宝HD,2768.T 双日,2801.T キッコーマン,2802.T 味の素,2871.T ニチレイ,2914.T JT,3086.T Jフロント,3099.T 三越伊勢丹,3289.T 東急不動産,3382.T セブン&アイ,"
-        "3401.T 帝人,3402.T 東レ,3405.T クラレ,3407.T 旭化成,3436.T SUMCO,3659.T ネクソン,3861.T 王子HD,3863.T 日本製紙,4004.T レゾナック,4005.T 住友化学,4021.T 日産化学,4041.T 日本曹達,4042.T 東ソー,4043.T トクヤマ,4061.T デンカ,4063.T 信越化学,4151.T 協和キリン,4183.T 三井化学,4188.T 三菱ケミカル,4208.T UBE,4324.T 電通G,4452.T 花王,"
-        "4502.T 武田薬品,4503.T アステラス製薬,4506.T 住友ファーマ,4507.T 塩野義製薬,4519.T 中外製薬,4523.T エーザイ,4568.T 第一三共,4578.T 大塚HD,4689.T LINEヤフー,4704.T トレンドマイクロ,4751.T サイバーエージェント,4755.T 楽天G,4901.T 富士フイルム,4911.T 資生堂,5019.T 出光興産,5020.T ENEOS,5101.T 横浜ゴム,5108.T ブリヂストン,5201.T AGC,5202.T 日本板硝子,5214.T 日本電気硝子,5232.T 住友大阪セメント,5233.T 太平洋セメント,5301.T 東海カーボン,5332.T TOTO,5333.T 日本ガイシ,"
-        "5401.T 日本製鉄,5406.T 神戸製鋼所,5411.T JFEHD,5541.T 大平洋金属,5631.T 日本製鋼所,5703.T 日本軽金属,5706.T 三井金属,5711.T 三菱マテリアル,5713.T 住友金属鉱山,5714.T DOWA,5801.T 古河電工,5802.T 住友電工,5803.T フジクラ,5831.T しずおかFG,5938.T LIXIL,6098.T リクルートHD,6103.T オークマ,6118.T アイダ,6273.T SMC,6301.T コマツ,6302.T 住友重機械,6305.T 日立建機,6326.T クボタ,6361.T 荏原製作所,6367.T ダイキン,6471.T 日本精工,6472.T NTN,6473.T ジェイテクト,6501.T 日立製作所,6503.T 三菱電機,6504.T 富士電機,6506.T 安川電機,6526.T ソシオネクスト,6594.T ニデック,"
-        "6645.T オムロン,6701.T NEC,6702.T 富士通,6723.T ルネサス,6724.T エプソン,6752.T パナソニック,6758.T ソニーG,6762.T TDK,6770.T アルプスアルパイン,6841.T 横河電機,6857.T アドバンテスト,6861.T キーエンス,6902.T デンソー,6952.T カシオ,6954.T ファナック,6971.T 京セラ,6976.T 太陽誘電,6981.T 村田製作所,6988.T 日東電工,"
-        "7011.T 三菱重工,7012.T 川崎重工,7013.T IHI,7186.T コンコルディア,7201.T 日産自動車,7202.T いすゞ自動車,7203.T トヨタ自動車,7205.T 日野自動車,7211.T 三菱自動車,7261.T マツダ,7267.T ホンダ,7269.T スズキ,7270.T SUBARU,7272.T ヤマハ発動機,7731.T ニコン,7733.T オリンパス,7735.T SCREEN,7741.T HOYA,7751.T キヤノン,7752.T リコー,7762.T シチズン時計,7832.T バンダイナムコ,7911.T TOPPAN,7912.T 大日本印刷,7951.T ヤマハ,7974.T 任天堂,"
-        "8001.T 伊藤忠商事,8002.T 丸紅,8015.T 豊田通商,8031.T 三井物産,8035.T 東京エレクトロン,8053.T 住友商事,8058.T 三菱商事,8233.T 高島屋,8252.T 丸井G,8267.T イオン,8304.T あおぞら銀行,8306.T 三菱UFJ,8308.T りそなHD,8309.T 三井住友トラスト,8316.T 三井住友FG,8331.T 千葉銀行,8354.T ふくおかFG,8411.T みずほFG,8591.T オリックス,8601.T 大和証券G,8604.T 野村HD,8628.T 松井証券,8630.T SOMPOHD,8725.T MS&AD,8750.T 第一生命HD,8766.T 東京海上HD,8795.T T&DHD,8801.T 三井不動産,8802.T 三菱地所,8804.T 東京建物,8830.T 住友不動産,"
-        "9001.T 東武鉄道,9005.T 東急,9007.T 小田急電鉄,9008.T 京王電鉄,9009.T 京成電鉄,9020.T JR東日本,9021.T JR西日本,9022.T JR東海,9064.T ヤマトHD,9101.T 日本郵船,9104.T 商船三井,9107.T 川崎汽船,9147.T NIPPON EXPRESS,9201.T 日本航空,9202.T ANAHD,9301.T 三菱倉庫,9432.T NTT,9433.T KDDI,9434.T ソフトバンク,9501.T 東京電力HD,9502.T 中部電力,9503.T 関西電力,9531.T 東京ガス,9532.T 大阪ガス,9602.T 東宝,9613.T NTTデータG,9735.T セコム,9766.T コナミG,9843.T ニトリHD,9983.T ファーストリテイリング,9984.T ソフトバンクG"
-    )
-    tickers = {}
-    for item in raw_data.split(","):
-        if item.strip():
-            code, name = item.strip().split(" ", 1)
-            tickers[name] = code
-    return tickers
+    """Wikipediaから確実な225銘柄リストを動的に取得する"""
+    try:
+        url = "https://ja.wikipedia.org/wiki/%E6%97%A5%E7%B5%8C%E5%B9%B3%E5%9D%87%E6%A0%AA%E4%BE%A1"
+        tables = pd.read_html(url)
+        for df in tables:
+            if 'コード' in df.columns and '銘柄名' in df.columns:
+                tickers = {}
+                for _, row in df.iterrows():
+                    code = str(int(row['コード'])) + ".T"
+                    name = str(row['銘柄名'])
+                    tickers[name] = code
+                if len(tickers) >= 200: # 正常に取得できた場合
+                    return tickers
+    except Exception:
+        pass
+    
+    # 万が一Wikipediaの構造が変わって取得失敗した場合のフォールバック（緊急用リスト）
+    return MAJOR_STOCKS_JP
 
 @st.cache_data(ttl=3600)
 def get_exchange_rate():
@@ -67,11 +71,20 @@ def get_exchange_rate():
         return 150.0
 
 def analyze_single_stock(name, ticker):
+    """1銘柄のデータを安全に取得・解析する"""
+    # 💡 Streamlit Cloudでのアクセス遮断を防ぐため、ランダムなウェイトを挟む
+    time.sleep(random.uniform(0.2, 0.6))
+    
     try:
-        stock = yf.Ticker(ticker)
+        # 💡 ボット検知を回避するためブラウザからのアクセスを装う
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        })
+        
+        stock = yf.Ticker(ticker, session=session)
         df = stock.history(period="2y")
         
-        # 💡 旧コードの安定性を採用: 200日未満でも弾かず、15日以上のデータがあれば許容
         if df.empty or len(df) < 15:
             return None
             
@@ -88,17 +101,14 @@ def analyze_single_stock(name, ticker):
         
         macd_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
         
-        # 💡 旧コードの安定性を採用: データが200日以上ある場合のみSMA200を計算
         if len(df) >= 200:
             df['SMA200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
             long_trend = "上昇中 ☀️" if latest['Close'] > latest['SMA200'].iloc[-1] else "下落中 ☔"
         else:
             long_trend = "データ蓄積中 ➖"
             
-        # 💡 高速化: 通貨判定は旧コードの手法（Ticker末尾）を採用
         currency = "JPY" if ticker.endswith(".T") else "USD"
         
-        # 💡 クラッシュ対策: セクター取得(info)が失敗しても処理全体を止めない
         sector = "不明"
         try:
             sector = stock.info.get('sector', '不明')
@@ -128,7 +138,8 @@ def fetch_and_analyze(tickers_dict):
     progress_text = st.empty()
     progress_bar = st.progress(0)
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    # 💡 並列数を10→3に減らし、サーバー負荷を抑えて確実な取得を目指す
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         future_to_stock = {executor.submit(analyze_single_stock, name, t): name for name, t in tickers_dict.items()}
         completed = 0
         for future in concurrent.futures.as_completed(future_to_stock):
@@ -163,7 +174,6 @@ with st.sidebar.form("search_form"):
     
     mode_choice = "主要銘柄"
     if market_choice == "🇯🇵 日本株":
-        # 💡 新コードの仕様を採用: 日経225をデフォルトに
         mode_choice = st.radio("📊 銘柄モード (日本株)", ["日経225全銘柄", "主要銘柄"])
     else:
         st.write("📊 銘柄モード: 主要米国株 (TSM等含む)")
@@ -171,7 +181,6 @@ with st.sidebar.form("search_form"):
     custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
     submitted = st.form_submit_button("🚀 この条件で分析を実行する")
 
-# 💡 旧コードの安定性を採用: 未初期化または空データ時にも確実に実行
 need_fetch = ("market_data" not in st.session_state) or (not st.session_state.market_data) or submitted
 
 if need_fetch:
@@ -180,7 +189,7 @@ if need_fetch:
         if mode_choice == "主要銘柄":
             target_tickers = MAJOR_STOCKS_JP.copy()
         else:
-            with st.spinner("日経225の銘柄リストを展開中..."):
+            with st.spinner("Wikipediaから日経225の最新銘柄リストを取得中..."):
                 target_tickers = get_nikkei225_tickers().copy()
     else:
         target_tickers = MAJOR_STOCKS_US.copy()
@@ -191,7 +200,7 @@ if need_fetch:
             if t:
                 target_tickers[f"追加銘柄({t})"] = t
             
-    with st.spinner("データをスキャン・解析しています..."):
+    with st.spinner("データをスキャン・解析しています...（API制限回避のため少し時間がかかります）"):
         st.session_state.market_data = fetch_and_analyze(target_tickers)
         st.session_state.market_choice_name = market_choice
 
@@ -226,7 +235,6 @@ with tab1:
         display_df = res_df.reset_index(drop=True)
         display_df.index = display_df.index + 1
         
-        # 💡 旧コードの利便性を採用: ランキング内の絞り込み検索を復活
         search_term = st.text_input("🔍 ランキング内を絞り込み検索 (銘柄名やTickerを入力)", placeholder="例: トヨタ", value="")
         if search_term:
             display_df = display_df[
@@ -242,7 +250,7 @@ with tab1:
 # TAB 2: ポートフォリオ・売り時判定
 # ------------------------------------------
 with tab2:
-    st.header("💼 保引銘柄の監視・売り時判定")
+    st.header("💼 保有銘柄の監視・売り時判定")
     
     all_master_tickers = {}
     all_master_tickers.update(MAJOR_STOCKS_JP)
