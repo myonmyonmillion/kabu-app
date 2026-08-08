@@ -40,9 +40,9 @@ PORTFOLIO_FILE = "portfolio.csv"
 # ------------------------------------------
 # 関数群
 # ------------------------------------------
-@st.cache_data(ttl=86400) # 1日キャッシュ
+@st.cache_data(ttl=86400)
 def get_nikkei225_tickers():
-    """Wikipediaから日経225の銘柄コードを取得する（エラー回避ヘッダー付き）"""
+    """Wikipediaから日経225の銘柄コードを取得する"""
     try:
         url = "https://ja.wikipedia.org/wiki/%E6%97%A5%E7%B5%8C%E5%B9%B3%E5%9D%87%E6%A0%AA%E4%BE%A1"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
@@ -54,18 +54,18 @@ def get_nikkei225_tickers():
                 return {str(row['銘柄名']): f"{row['コード']}.T" for _, row in t.iterrows()}
     except Exception:
         pass
-    return MAJOR_STOCKS_JP # 取得失敗時の保険
+    return MAJOR_STOCKS_JP
 
 @st.cache_data(ttl=3600)
 def get_exchange_rate():
-    """最新のドル円レートを取得（シミュレーター計算用）"""
+    """最新のドル円レートを取得"""
     try:
         return yf.Ticker("JPY=X").history(period="1d")['Close'].iloc[-1]
     except Exception:
-        return 150.0 # 取得失敗時は150円で計算
+        return 150.0
 
 def analyze_single_stock(name, ticker):
-    """単一銘柄のデータ取得と分析ロジック（並列処理用）"""
+    """単一銘柄のデータ取得と分析ロジック"""
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
@@ -109,61 +109,76 @@ def analyze_single_stock(name, ticker):
     except Exception:
         return None
 
-@st.cache_data(ttl=3600)
 def fetch_and_analyze(tickers_dict):
-    """複数銘柄をマルチスレッドで高速取得"""
+    """複数銘柄をマルチスレッドで高速取得し、プログレスバーで進捗表示"""
     data = []
     total = len(tickers_dict)
     if total == 0: return data
     
-    progress_bar = st.progress(0, text="市場データを高速スキャン中...")
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
     
-    # 10スレッドで並列処理を行い、待ち時間を劇的に短縮
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         future_to_stock = {executor.submit(analyze_single_stock, name, t): name for name, t in tickers_dict.items()}
         completed = 0
         for future in concurrent.futures.as_completed(future_to_stock):
             completed += 1
             name = future_to_stock[future]
-            progress_bar.progress(completed / total, text=f"スキャン中... {completed}/{total} ({name})")
+            progress_text.text(f"📊 市場データをスキャン中... ({completed}/{total}) : {name}")
+            progress_bar.progress(completed / total)
             res = future.result()
             if res:
                 data.append(res)
                 
+    progress_text.empty()
     progress_bar.empty()
     return data
 
 # ==========================================
-# ⚙️ サイドバー (メニュー)
+# ⚙️ サイドバー (メニュー & 決定ボタン)
 # ==========================================
 st.sidebar.header("⚙️ 検索・フィルター設定")
 
-market_choice = st.sidebar.radio("🌐 対象市場を選択", ["🇯🇵 日本株", "🇺🇸 米国株"])
-target_tickers = {}
-
-if market_choice == "🇯🇵 日本株":
-    mode_choice = st.sidebar.radio("📊 銘柄モード (日本株)", ["主要銘柄", "日経225全銘柄"])
-    if mode_choice == "主要銘柄":
-        target_tickers = MAJOR_STOCKS_JP.copy()
+with st.sidebar.form("search_form"):
+    market_choice = st.radio("🌐 対象市場を選択", ["🇯🇵 日本株", "🇺🇸 米国株"])
+    
+    mode_choice = "主要銘柄"
+    if market_choice == "🇯🇵 日本株":
+        mode_choice = st.radio("📊 銘柄モード (日本株)", ["主要銘柄", "日経225全銘柄"])
     else:
-        st.sidebar.info("※日経225全件スキャンを実行します（約15〜30秒）")
-        target_tickers = get_nikkei225_tickers().copy()
-else:
-    st.sidebar.write("📊 銘柄モード: 主要米国株 (TSM等含む)")
-    target_tickers = MAJOR_STOCKS_US.copy()
+        st.write("📊 銘柄モード: 主要米国株 (TSM等含む)")
+    
+    custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
+    
+    # 決定ボタン
+    submitted = st.form_submit_button("🚀 この条件で分析を実行する")
+
+# セッションステートを使って選択状態を保持
+if "market_data" not in st.session_state or submitted:
+    target_tickers = {}
+    if market_choice == "🇯🇵 日本株":
+        if mode_choice == "主要銘柄":
+            target_tickers = MAJOR_STOCKS_JP.copy()
+        else:
+            with st.spinner("日経225の銘柄リストを取得中..."):
+                target_tickers = get_nikkei225_tickers().copy()
+    else:
+        target_tickers = MAJOR_STOCKS_US.copy()
+        
+    if custom_tickers_input:
+        for t_raw in custom_tickers_input.split(","):
+            t = t_raw.strip().upper()
+            if t: target_tickers[f"追加銘柄({t})"] = t
+            
+    with st.spinner("データをスキャン・解析しています..."):
+        st.session_state.market_data = fetch_and_analyze(target_tickers)
+        st.session_state.market_choice_name = market_choice
+
+market_data = st.session_state.market_data
+test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market_data])
+usd_jpy_rate = get_exchange_rate()
 
 st.sidebar.markdown("---")
-st.sidebar.write("➕ **個別銘柄の追加検索**")
-st.sidebar.write("※リストにない銘柄はティッカーを入力 (例: `8267.T`, `PLTR`)")
-custom_tickers_input = st.sidebar.text_input("追加ティッカー名:")
-
-if custom_tickers_input:
-    for t_raw in custom_tickers_input.split(","):
-        t = t_raw.strip().upper()
-        if t: target_tickers[f"追加銘柄({t})"] = t
-
-st.sidebar.markdown("---")
-# 投資用語集の追加
 with st.sidebar.expander("📖 投資用語集 (初心者向け)", expanded=False):
     st.markdown("""
     - **ティッカー**: 銘柄を識別する記号（例：トヨタは 7203.T）。米国株はアルファベットのみ。
@@ -174,11 +189,6 @@ with st.sidebar.expander("📖 投資用語集 (初心者向け)", expanded=Fals
     - **押し目買い**: 長期的に上昇している株が、一時的にカクッと下がったタイミングを狙って買うローリスクな手法。
     - **指値（さしね）注文**: 「〇〇円まで下がったら買う」と事前に希望価格を指定する注文方法。仕事中の売買に必須。
     """)
-
-# データロード実行
-market_data = fetch_and_analyze(target_tickers)
-test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market_data])
-usd_jpy_rate = get_exchange_rate()
 
 # ==========================================
 # 🔔 リアルタイム・シグナルアラート
@@ -199,7 +209,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 # TAB 1: 買い時ランキング
 # ------------------------------------------
 with tab1:
-    st.header(f"{market_choice} 買い時（売られすぎ）ランキング")
+    st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} 買い時（売られすぎ）ランキング")
     st.markdown("""
     **💡 初心者向けのポイント:** 
     まずは**「RSI(過熱感)」が30に近い銘柄**を探しましょう。売られすぎのバーゲン状態です。
@@ -210,12 +220,14 @@ with tab1:
         display_df = res_df.drop(columns=['df']).reset_index(drop=True)
         display_df.index = display_df.index + 1
         st.dataframe(display_df, use_container_width=True)
+    else:
+        st.warning("表示できるデータがありません。サイドバーの「分析を実行する」ボタンを押してください。")
 
 # ------------------------------------------
 # TAB 2: セクター（業種）分析
 # ------------------------------------------
 with tab2:
-    st.header(f"{market_choice} セクター別 トレンド分析")
+    st.header(f"🏢 セクター別 トレンド分析")
     st.markdown("**💡 使い方:** 業界全体が沈んでいるセクターは、優良銘柄も一緒に売られている大チャンスです。")
     if market_data:
         sec_df = pd.DataFrame(market_data)
@@ -228,7 +240,7 @@ with tab2:
 # TAB 3: ポートフォリオ・監視
 # ------------------------------------------
 with tab3:
-    st.header("保有銘柄の監視・売り時判定")
+    st.header("💼 保有銘柄の監視・売り時判定")
     st.markdown("※日米両方の銘柄を一括で管理できます。")
     
     if not os.path.exists(PORTFOLIO_FILE):
@@ -369,7 +381,7 @@ with tab6:
             st.info(f"💡 **AI分析結果**: 直近の値動きは、過去 **{match_date}** 頃のチャート形状と **{best_match_score*100:.1f}%** 似ています。")
 
 # ------------------------------------------
-# TAB 7: ミニ株・資金配分シミュレーション (為替対応版)
+# TAB 7: ミニ株・資金配分シミュレーション
 # ------------------------------------------
 with tab7:
     st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
@@ -391,7 +403,6 @@ with tab7:
                 currency = t_data['通貨']
                 shares = st.number_input(f"{sel} の購入株数", min_value=0, value=10, key=f"sim_{t_sim}")
                 
-                # 米国株の場合は円換算する
                 cost_local = price * shares
                 cost_jpy = cost_local * usd_jpy_rate if currency == "USD" else cost_local
                 used_budget_jpy += cost_jpy
