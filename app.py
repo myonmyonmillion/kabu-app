@@ -140,7 +140,6 @@ def analyze_single_stock(name, ticker, strategy):
         else:
             div_yield_disp = "-"
         
-        # 1. テクニカルスコア計算
         score = 0
         if is_uptrend: score += 30
         if macd_gc: score += 20
@@ -150,7 +149,6 @@ def analyze_single_stock(name, ticker, strategy):
         elif rsi_val < 30: score += 10 
         elif 45 < rsi_val <= 60: score += 10
 
-        # 2. ファンダメンタルズ補正
         overvalued_flag = False
         is_fundamental_good = False
         
@@ -174,7 +172,6 @@ def analyze_single_stock(name, ticker, strategy):
                     score += 10
                     is_fundamental_good = True
 
-        # 3. アクション判定
         if rsi_val > 70:
             action = "高値警戒（見送り） 🛑"
             target_str = f"過熱。{round(float(target_price), 1)} まで調整待ち"
@@ -189,7 +186,6 @@ def analyze_single_stock(name, ticker, strategy):
             action = "様子見 ⏳"
             target_str = f"押し目目安: {round(float(target_price), 1)}"
             
-        # 4. 初心者向けコメントの生成
         comment = ""
         if "様子見" in action:
             if is_fundamental_good:
@@ -338,6 +334,30 @@ with st.sidebar.form("search_form"):
     custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
     submitted = st.form_submit_button("🚀 この条件で分析を実行する")
 
+# 用語解説機能の復元
+st.sidebar.markdown("---")
+st.sidebar.header("📖 投資の教科書 (用語集)")
+with st.sidebar.expander("📝 株式用語と指標の解説を開く", expanded=False):
+    st.markdown("""
+    **✅ ファンダメンタルズ分析（企業価値）**
+    - **PER (株価収益率)**
+      企業の利益に対して株価が割安かを示します。一般的に15倍以下で割安。
+    - **PBR (株価純資産倍率)**
+      企業の純資産（解散価値）に対する株価の割合。1倍割れはお買い得。
+    - **配当利回り**
+      投資額に対して年間でもらえる配当金の割合。3〜4%以上が高配当。
+    
+    **✅ テクニカル分析（チャート・心理）**
+    - **RSI (相対力指数)**
+      買われすぎ・売られすぎの過熱感を示します。**70以上で買われすぎ、30以下で売られすぎ**。
+    - **MACD (マックディー)**
+      トレンドの方向を見る指標。シグナル線を下から上に抜ける「ゴールデンクロス」は買いサイン。
+    - **ボリンジャーバンド**
+      株価が動く範囲を予測する帯（バンド）。
+      ・**-2σ（下の線）**に触れると「売られすぎ」で反発（買い）シグナル
+      ・**+2σ（上の線）**に触れると「買われすぎ」で下落（売り）シグナル
+    """)
+
 if "market_data" not in st.session_state or submitted:
     target_tickers = {}
     if market_choice == "🇯🇵 日本株":
@@ -368,6 +388,12 @@ all_master_tickers.update(MAJOR_STOCKS_JP)
 all_master_tickers.update(MAJOR_STOCKS_US)
 all_master_tickers.update(get_nikkei225_tickers())
 full_ticker_options = [f"{name} ({code})" for name, code in all_master_tickers.items()]
+
+# ランキング1位の銘柄を自動でデフォルト選択
+if market_data and not st.session_state.selected_ticker:
+    sorted_top = sorted(market_data, key=lambda x: x['総合スコア'], reverse=True)
+    if sorted_top:
+        st.session_state.selected_ticker = sorted_top[0]['Ticker']
 
 # ==========================================
 # カスタムUI タブ構成
@@ -424,7 +450,7 @@ if st.session_state.active_tab == "🏆 ランキング":
         st.warning("表示できるデータがありません。サイドバーから分析を実行してください。")
 
 # ------------------------------------------
-# TAB 2: マルチタイムフレーム分析
+# TAB 2: チャート分析
 # ------------------------------------------
 elif st.session_state.active_tab == "📈 チャート":
     st.header("📈 マルチタイムフレーム ＆ 出来高分析")
@@ -559,11 +585,41 @@ elif st.session_state.active_tab == "💼 ポートフォリオ":
             st.dataframe(pd.DataFrame(status_data), use_container_width=True)
 
 # ------------------------------------------
-# TAB 4: 資金配分
+# TAB 4: 資金配分 (復元版)
 # ------------------------------------------
 elif st.session_state.active_tab == "💰 資金配分":
-    st.header("💰 分散投資シミュレーター")
-    st.info("予算を入力し、買いたい銘柄を選ぶとシミュレーションができます。")
+    st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
+    total_budget = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
+    
+    if test_options:
+        selected_for_sim = st.multiselect(
+            "分散投資したい銘柄を選択", test_options, default=test_options[:2] if len(test_options)>1 else test_options
+        )
+        sim_data, used_budget_jpy = [], 0
+        for sel in selected_for_sim:
+            t_sim = sel.split("(")[-1].replace(")", "")
+            t_data = next((r for r in market_data if r['Ticker'] == t_sim), None)
+            if t_data:
+                price, currency = t_data['現在値'], t_data['通貨']
+                shares = st.number_input(f"{sel} の購入株数", min_value=0, value=10, key=f"sim_{t_sim}")
+                cost_local = price * shares
+                cost_jpy = cost_local * usd_jpy_rate if currency == "USD" else cost_local
+                used_budget_jpy += cost_jpy
+                sim_data.append({"銘柄": sel, "1株価格": f"{price:,.2f} {currency}", "株数": shares, "必要資金(円換算)": f"¥{round(cost_jpy):,}"})
+        
+        if sim_data:
+            st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
+            remaining = total_budget - used_budget_jpy
+            col1, col2 = st.columns(2)
+            col1.metric("使用資金(円)", f"¥{used_budget_jpy:,.0f}")
+            if remaining >= 0:
+                col2.metric("予算残高(円)", f"¥{remaining:,.0f}")
+                st.success(f"予算内です！残り {remaining:,.0f} 円は現金余力として待機できます。")
+            else:
+                col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
+                st.error("予算をオーバーしています。")
+    else:
+        st.warning("表示できる銘柄データがありません。先にサイドバーから分析を実行してください。")
 
 # ------------------------------------------
 # TAB 5: LINE Messaging API通知
@@ -571,13 +627,35 @@ elif st.session_state.active_tab == "💰 資金配分":
 elif st.session_state.active_tab == "🔔 LINE通知":
     st.header("🔔 LINE Messaging API 株価アラート設定")
     st.markdown("""
-    **💡 あらかじめ設定されたトークンとユーザーIDが初期入力されています。**
+    **💡 LINE Developersで取得した認証情報を設定してください。**
     """)
     
     col_t1, col_t2 = st.columns(2)
     line_access_token = col_t1.text_input("🔑 チャネルアクセストークン", value=DEFAULT_LINE_TOKEN, type="password")
     line_user_id = col_t2.text_input("👤 Your user ID (ユーザーID)", value=DEFAULT_LINE_USER_ID, type="password")
     
+    # 接続確認用テスト送信ボタン
+    if st.button("🧪 LINEテスト通知を送信（接続確認）"):
+        if not line_access_token or not line_user_id:
+            st.error("アクセストークンとユーザーIDを入力してください。")
+        else:
+            url = "https://api.line.me/v2/bot/message/push"
+            headers = {
+                "Authorization": f"Bearer {line_access_token}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "to": line_user_id,
+                "messages": [{"type": "text", "text": "🧪 テスト通知: LINE Messaging APIの接続が正常に確認できました！"}]
+            }
+            res = requests.post(url, headers=headers, json=payload)
+            if res.status_code == 200:
+                st.success("📱 テスト通知をLINEに送信しました！メッセージをご確認ください。")
+            else:
+                st.error(f"送信失敗 ({res.status_code}): トークンやIDを確認してください。\nエラー詳細: {res.text}")
+
+    st.markdown("---")
+
     with st.expander("➕ 新しい通知アラートを登録", expanded=True):
         with st.form("add_alert_form", clear_on_submit=True):
             a_sel = st.selectbox("監視する銘柄を選択", full_ticker_options, index=None)
@@ -595,10 +673,23 @@ elif st.session_state.active_tab == "🔔 LINE通知":
                     st.success(f"{t_name} のアラートを登録しました！")
                     st.rerun()
 
+    # 個別削除機能付きアラート一覧
     if not st.session_state.alerts_df.empty:
         st.subheader("📋 登録中のアラート一覧")
-        st.dataframe(st.session_state.alerts_df, use_container_width=True)
         
+        for idx, row in st.session_state.alerts_df.iterrows():
+            with st.container(border=True):
+                col_a1, col_a2, col_a3, col_a4 = st.columns([3, 3, 2, 1])
+                col_a1.write(f"**{row['銘柄名']}** (`{row['Ticker']}`)")
+                col_a2.write(f"条件: {row['通知条件']}")
+                col_a3.write(f"目標: {row['目標価格']:,.1f}")
+                if col_a4.button("🗑️ 削除", key=f"del_alert_{idx}"):
+                    st.session_state.alerts_df = st.session_state.alerts_df.drop(idx).reset_index(drop=True)
+                    st.session_state.alerts_df.to_csv(ALERTS_FILE, index=False)
+                    st.success(f"{row['銘柄名']} のアラートを削除しました。")
+                    st.rerun()
+
+        st.markdown("---")
         if st.button("🔄 監視を実行（条件合致でLINE送信）", type="primary"):
             if not line_access_token or not line_user_id:
                 st.error("上の入力欄に『アクセストークン』と『ユーザーID』を入力してください。")
