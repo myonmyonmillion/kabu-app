@@ -401,14 +401,17 @@ if "portfolio_df" not in st.session_state:
 if "alerts_df" not in st.session_state:
   if os.path.exists(ALERTS_FILE):
     try:
-      st.session_state.alerts_df = pd.read_csv(ALERTS_FILE)
+      df_temp = pd.read_csv(ALERTS_FILE)
+      if "通知済み" not in df_temp.columns:
+        df_temp["通知済み"] = False
+      st.session_state.alerts_df = df_temp
     except:
       st.session_state.alerts_df = pd.DataFrame(
-          columns=["Ticker", "銘柄名", "通知条件", "目標価格"]
+          columns=["Ticker", "銘柄名", "通知条件", "目標価格", "通知済み"]
       )
   else:
     st.session_state.alerts_df = pd.DataFrame(
-        columns=["Ticker", "銘柄名", "通知条件", "目標価格"]
+        columns=["Ticker", "銘柄名", "通知条件", "目標価格", "通知済み"]
     )
 
 if "selected_ticker" not in st.session_state:
@@ -909,7 +912,6 @@ elif st.session_state.active_tab == "💰 資金配分":
 elif st.session_state.active_tab == "🔔 LINE通知":
   st.header("🔔 LINE Messaging API 株価アラート設定")
 
-  # Streamlit Cloud Secretsから安全に鍵を取得
   try:
     line_access_token = st.secrets.get(
         "LINE_TOKEN", os.environ.get("LINE_TOKEN", "")
@@ -989,6 +991,7 @@ elif st.session_state.active_tab == "🔔 LINE通知":
               "銘柄名": t_name,
               "通知条件": a_condition,
               "目標価格": a_price,
+              "通知済み": False,
           }])
           st.session_state.alerts_df = pd.concat(
               [st.session_state.alerts_df, new_alert], ignore_index=True
@@ -1002,11 +1005,22 @@ elif st.session_state.active_tab == "🔔 LINE通知":
 
     for idx, row in st.session_state.alerts_df.iterrows():
       with st.container(border=True):
-        col_a1, col_a2, col_a3, col_a4 = st.columns([3, 3, 2, 1])
+        col_a1, col_a2, col_a3, col_a4, col_a5 = st.columns([3, 3, 2, 2, 1])
         col_a1.write(f"**{row['銘柄名']}** (`{row['Ticker']}`)")
         col_a2.write(f"条件: {row['通知条件']}")
         col_a3.write(f"目標: {row['目標価格']:,.1f}")
-        if col_a4.button("🗑️ 削除", key=f"del_alert_{idx}"):
+
+        is_notified = row.get("通知済み", False)
+        if is_notified:
+          col_a4.write("✅ 送信済み")
+          if col_a4.button("🔄 再有効化", key=f"reset_alert_{idx}"):
+            st.session_state.alerts_df.at[idx, "通知済み"] = False
+            st.session_state.alerts_df.to_csv(ALERTS_FILE, index=False)
+            st.rerun()
+        else:
+          col_a4.write("⏳ 監視中")
+
+        if col_a5.button("🗑️ 削除", key=f"del_alert_{idx}"):
           st.session_state.alerts_df = st.session_state.alerts_df.drop(
               idx
           ).reset_index(drop=True)
@@ -1022,6 +1036,9 @@ elif st.session_state.active_tab == "🔔 LINE通知":
         with st.spinner("現在の株価を取得し、アラートをチェック中..."):
           notified_count = 0
           for idx, row in st.session_state.alerts_df.iterrows():
+            if row.get("通知済み", False):
+              continue
+
             t = row["Ticker"]
             target_p = float(row["目標価格"])
             cond = row["通知条件"]
@@ -1060,6 +1077,8 @@ elif st.session_state.active_tab == "🔔 LINE通知":
                 res = requests.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
                   st.success(f"📱 {name} のアラートをLINEに送信しました！")
+                  st.session_state.alerts_df.at[idx, "通知済み"] = True
+                  st.session_state.alerts_df.to_csv(ALERTS_FILE, index=False)
                   notified_count += 1
                 else:
                   st.error(
@@ -1072,11 +1091,13 @@ elif st.session_state.active_tab == "🔔 LINE通知":
               continue
 
           if notified_count == 0:
-            st.info("現在、条件を満たしている銘柄はありませんでした。")
+            st.info(
+                "現在、条件を満たしている未通知の銘柄はありませんでした。"
+            )
 
     if st.button("アラートを全件リセット"):
       st.session_state.alerts_df = pd.DataFrame(
-          columns=["Ticker", "銘柄名", "通知条件", "目標価格"]
+          columns=["Ticker", "銘柄名", "通知条件", "目標価格", "通知済み"]
       )
       if os.path.exists(ALERTS_FILE):
         os.remove(ALERTS_FILE)

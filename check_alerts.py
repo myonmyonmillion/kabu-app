@@ -27,7 +27,18 @@ def check_alerts():
     print("登録中のアラートはありません。")
     return
 
+  # 「通知済み」列が存在しない場合は追加
+  if "通知済み" not in df.columns:
+    df["通知済み"] = False
+
+  updated = False
+
   for idx, row in df.iterrows():
+    # すでに通知済みの場合はスキップ（連投防止）
+    if row.get("通知済み", False):
+      print(f"{row['銘柄名']}: すでに通知済みのためスキップします。")
+      continue
+
     ticker = row["Ticker"]
     target_p = float(row["目標価格"])
     cond = row["通知条件"]
@@ -62,10 +73,19 @@ def check_alerts():
         }
         res = requests.post(url, headers=headers, json=payload)
         print(f"{name}: 通知送信結果 -> {res.status_code}")
+
+        if res.status_code == 200:
+          df.at[idx, "通知済み"] = True
+          updated = True
       else:
         print(f"{name}: 条件未達 (現在値 {current_p} / 目標 {target_p})")
     except Exception as e:
       print(f"{ticker} 取得エラー: {e}")
+
+  # 通知済みの状態を更新して保存
+  if updated:
+    df.to_csv(ALERTS_FILE, index=False)
+    print("alerts.csv の通知状態を更新しました。")
 
 
 if __name__ == "__main__":
