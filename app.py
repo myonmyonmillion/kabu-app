@@ -9,6 +9,8 @@ import concurrent.futures
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
+import requests
 
 # ------------------------------------------
 # ページ設定
@@ -17,7 +19,7 @@ st.set_page_config(page_title="総合投資ダッシュボード", layout="wide"
 st.title("🦅 グローバル・マルチ投資ダッシュボード")
 
 # ------------------------------------------
-# 定数・銘柄リスト
+# 定数・設定ファイル
 # ------------------------------------------
 MAJOR_STOCKS_JP = {
     "トヨタ自動車": "7203.T", "三菱UFJ FG": "8306.T", "三井住友FG": "8316.T",
@@ -39,6 +41,11 @@ MAJOR_STOCKS_US = {
 }
 
 PORTFOLIO_FILE = "portfolio.csv"
+ALERTS_FILE = "alerts.csv"
+
+# LINE認証情報の初期値設定
+DEFAULT_LINE_TOKEN = "5tixnuTNtGg4kcYchf0EHxZdgdSfG7VwrxRRw3XsrDAwvYVmAJoUzhxEMo9SknD/T4vcPHrA1OTUHO3xy4kiAchUSB+MzgqNrmi5ue5gIl4jAtkL12M26oLflVAmvrOIfio6TUI3R4oR10KpIfV/ywdB04t89/1O/w1cDnyilFU="
+DEFAULT_LINE_USER_ID = "U13ae39891172d8f144b303ec5b404b62"
 
 # ------------------------------------------
 # 関数群
@@ -81,7 +88,7 @@ def get_macro_data():
     except Exception:
         return {}
 
-def analyze_single_stock(name, ticker):
+def analyze_single_stock(name, ticker, strategy):
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
@@ -118,11 +125,9 @@ def analyze_single_stock(name, ticker):
         else:
             is_uptrend = False
             
-        # --- 目安金額と買い時アクションのロジック ---
         target_price = latest['BB_Low'] if not pd.isna(latest['BB_Low']) else latest['SMA25']
         currency = info.get('currency', 'JPY' if ticker.endswith('.T') else 'USD')
         
-        # ファンダメンタル指標の取得
         per = info.get('trailingPE', None)
         pbr = info.get('priceToBook', None)
         
@@ -145,26 +150,31 @@ def analyze_single_stock(name, ticker):
         elif rsi_val < 30: score += 10 
         elif 45 < rsi_val <= 60: score += 10
 
-        # 2. 【追加】ファンダメンタルズ補正 (割高判定ペナルティ)
+        # 2. ファンダメンタルズ補正
         overvalued_flag = False
-        if per and isinstance(per, (int, float)):
-            if per > 50:
-                score -= 30
-                overvalued_flag = True
-            elif per > 30:
-                score -= 15
-                overvalued_flag = True
-            elif 0 < per <= 15:
-                score += 15
+        is_fundamental_good = False
+        
+        if strategy == "中長期割安 (総合判断)":
+            if per and isinstance(per, (int, float)):
+                if per > 50:
+                    score -= 30
+                    overvalued_flag = True
+                elif per > 30:
+                    score -= 15
+                    overvalued_flag = True
+                elif 0 < per <= 15:
+                    score += 15
+                    is_fundamental_good = True
 
-        if pbr and isinstance(pbr, (int, float)):
-            if pbr > 4.0:
-                score -= 15
-                overvalued_flag = True
-            elif 0 < pbr <= 1.0:
-                score += 10
+            if pbr and isinstance(pbr, (int, float)):
+                if pbr > 4.0:
+                    score -= 15
+                    overvalued_flag = True
+                elif 0 < pbr <= 1.0:
+                    score += 10
+                    is_fundamental_good = True
 
-        # 3. アクション判定の更新
+        # 3. アクション判定
         if rsi_val > 70:
             action = "高値警戒（見送り） 🛑"
             target_str = f"過熱。{round(float(target_price), 1)} まで調整待ち"
@@ -178,6 +188,23 @@ def analyze_single_stock(name, ticker):
         else:
             action = "様子見 ⏳"
             target_str = f"押し目目安: {round(float(target_price), 1)}"
+            
+        # 4. 初心者向けコメントの生成
+        comment = ""
+        if "様子見" in action:
+            if is_fundamental_good:
+                comment = "💡 【解説】 企業の基礎体力や割安度は文句なしのトップクラスですが、今この瞬間の買いタイミングとしては、あと少し引きつけた方が安全な銘柄です。"
+            else:
+                comment = "💡 【解説】 現在は明確な買いサインが出ていません。設定された押し目目安まで下落するのを待つのが無難です。"
+        elif "今すぐ買い候補" in action:
+            if is_fundamental_good:
+                comment = "💡 【解説】 割安かつチャートも底値圏！非常に条件が揃った文句なしの買い候補です。"
+            else:
+                comment = "💡 【解説】 テクニカル指標が明確な買いサインを出しています！短期的な上昇トレンドの波に乗れる可能性があります。"
+        elif "割高警戒" in action:
+            comment = "💡 【解説】 チャートの形は良いですが、株価が企業価値に対して割高水準にあります。急な下落（高値掴み）に注意してください。"
+        elif "高値警戒" in action:
+            comment = "💡 【解説】 相場が過熱しており、いつ利益確定の売りが出てもおかしくない状態です。今は手を出さないのが吉です。"
         
         return {
             "Ticker": ticker,
@@ -191,12 +218,13 @@ def analyze_single_stock(name, ticker):
             "RSI(過熱感)": round(float(rsi_val), 1),
             "PER": round(per, 2) if per else "-",
             "PBR": round(pbr, 2) if pbr else "-",
-            "配当利回り(%)": div_yield_disp
+            "配当利回り(%)": div_yield_disp,
+            "初心者向けコメント": comment
         }
     except Exception:
         return None
 
-def fetch_and_analyze(tickers_dict):
+def fetch_and_analyze(tickers_dict, strategy):
     data = []
     total = len(tickers_dict)
     if total == 0: return data
@@ -205,7 +233,7 @@ def fetch_and_analyze(tickers_dict):
     progress_bar = st.progress(0)
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_stock = {executor.submit(analyze_single_stock, name, t): name for name, t in tickers_dict.items()}
+        future_to_stock = {executor.submit(analyze_single_stock, name, t, strategy): name for name, t in tickers_dict.items()}
         completed = 0
         for future in concurrent.futures.as_completed(future_to_stock):
             completed += 1
@@ -234,7 +262,14 @@ def get_google_news(query):
             title = item.find('title').text
             link = item.find('link').text
             pubDate = item.find('pubDate').text
-            news_list.append({'title': title, 'link': link, 'date': pubDate})
+            
+            try:
+                dt = parsedate_to_datetime(pubDate)
+                formatted_date = dt.strftime("%y/%m/%d %H:%M")
+            except:
+                formatted_date = pubDate
+
+            news_list.append({'title': title, 'link': link, 'date': formatted_date})
     except Exception:
         pass
     return news_list
@@ -250,12 +285,21 @@ if "portfolio_df" not in st.session_state:
             st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
     else:
         st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
+
+if "alerts_df" not in st.session_state:
+    if os.path.exists(ALERTS_FILE):
+        try:
+            st.session_state.alerts_df = pd.read_csv(ALERTS_FILE)
+        except:
+            st.session_state.alerts_df = pd.DataFrame(columns=["Ticker", "銘柄名", "通知条件", "目標価格"])
+    else:
+        st.session_state.alerts_df = pd.DataFrame(columns=["Ticker", "銘柄名", "通知条件", "目標価格"])
         
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
 
 if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "🏆 買い時ランキング"
+    st.session_state.active_tab = "🏆 ランキング"
 
 # ==========================================
 # マクロサマリー
@@ -279,6 +323,12 @@ st.sidebar.header("⚙️ 検索・フィルター設定")
 with st.sidebar.form("search_form"):
     market_choice = st.radio("🌐 対象市場を選択", ["🇯🇵 日本株", "🇺🇸 米国株"])
     
+    strategy_choice = st.radio(
+        "🧠 投資スタイル (判定ロジック)", 
+        ["中長期割安 (総合判断)", "短期スイング (テクニカル重視)"],
+        help="【総合判断】はPER/PBRも加味して割高株を排除します。【テクニカル重視】は業績を無視し、チャートの勢いのみで判定します。"
+    )
+    
     mode_choice = "主要銘柄"
     if market_choice == "🇯🇵 日本株":
         mode_choice = st.radio("📊 銘柄モード (日本株)", ["日経225全銘柄", "主要銘柄"])
@@ -287,29 +337,6 @@ with st.sidebar.form("search_form"):
     
     custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
     submitted = st.form_submit_button("🚀 この条件で分析を実行する")
-
-st.sidebar.markdown("---")
-st.sidebar.header("📖 投資の教科書 (用語集)")
-with st.sidebar.expander("📝 株式用語と指標の解説を開く", expanded=False):
-    st.markdown("""
-    **✅ ファンダメンタルズ分析（企業価値）**
-    - **PER (株価収益率)**
-      企業の利益に対して株価が割安かを示します。一般的に15倍以下で割安。
-    - **PBR (株価純資産倍率)**
-      企業の純資産（解散価値）に対する株価の割合。1倍割れはお買い得。
-    - **配当利回り**
-      投資額に対して年間でもらえる配当金の割合。3〜4%以上が高配当。
-    
-    **✅ テクニカル分析（チャート・心理）**
-    - **RSI (相対力指数)**
-      買われすぎ・売られすぎの過熱感を示します。**70以上で買われすぎ、30以下で売られすぎ**。
-    - **MACD (マックディー)**
-      トレンドの方向を見る指標。シグナル線を下から上に抜ける「ゴールデンクロス」は買いサイン。
-    - **ボリンジャーバンド**
-      株価が動く範囲を予測する帯（バンド）。
-      ・**-2σ（下の線）**に触れると「売られすぎ」で反発（買い）シグナル
-      ・**+2σ（上の線）**に触れると「買われすぎ」で下落（売り）シグナル
-    """)
 
 if "market_data" not in st.session_state or submitted:
     target_tickers = {}
@@ -328,17 +355,24 @@ if "market_data" not in st.session_state or submitted:
             if t: target_tickers[f"追加銘柄({t})"] = t
             
     with st.spinner("データをスキャン・解析しています..."):
-        st.session_state.market_data = fetch_and_analyze(target_tickers)
+        st.session_state.market_data = fetch_and_analyze(target_tickers, strategy_choice)
         st.session_state.market_choice_name = market_choice
+        st.session_state.strategy_name = strategy_choice
 
 market_data = st.session_state.market_data
 test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market_data]) if market_data else []
 usd_jpy_rate = macro_data.get("JPY=X", {}).get("price", 150.0) if macro_data else 150.0
 
+all_master_tickers = {}
+all_master_tickers.update(MAJOR_STOCKS_JP)
+all_master_tickers.update(MAJOR_STOCKS_US)
+all_master_tickers.update(get_nikkei225_tickers())
+full_ticker_options = [f"{name} ({code})" for name, code in all_master_tickers.items()]
+
 # ==========================================
 # カスタムUI タブ構成
 # ==========================================
-tabs = ["🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", "💰 資金配分"]
+tabs = ["🏆 ランキング", "📈 チャート", "💼 ポートフォリオ", "💰 資金配分", "🔔 LINE通知"]
 selected_tab = st.radio("メニュー", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True, label_visibility="collapsed")
 
 if selected_tab != st.session_state.active_tab:
@@ -346,44 +380,53 @@ if selected_tab != st.session_state.active_tab:
     st.rerun()
 
 # ------------------------------------------
-# TAB 1: 買い時ランキング (モバイル最適化カード表示)
+# TAB 1: 買い時ランキング
 # ------------------------------------------
-if st.session_state.active_tab == "🏆 買い時ランキング":
-    st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} トップ10銘柄")
-    st.caption("💡 ボタンを押すと詳細チャート分析へ遷移します。")
+if st.session_state.active_tab == "🏆 ランキング":
+    st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} トップ10")
+    st.caption(f"現在の判定ロジック: **{st.session_state.get('strategy_name', '中長期割安 (総合判断)')}**")
+    
+    show_only_buy_now = st.toggle("🚀 『今すぐ買い』銘柄のみ表示", value=False)
     
     if market_data:
         res_df = pd.DataFrame(market_data).sort_values('総合スコア', ascending=False)
+        
+        if show_only_buy_now:
+            res_df = res_df[res_df['推奨アクション'].str.contains('今すぐ買い')]
+            
         display_df = res_df.reset_index(drop=True)
         display_df.index = display_df.index + 1
         
-        # モバイル表示でも崩れない「カード型デザイン」
-        for idx, row in display_df.head(10).iterrows():
-            with st.container(border=True):
-                col_left, col_right = st.columns([3, 1])
-                with col_left:
-                    st.markdown(f"#### **{idx}位 : {row['銘柄名']}** (`{row['Ticker']}`)")
-                    st.write(f"**判定:** {row['推奨アクション']} | **スコア:** {row['総合スコア']}点")
-                    st.write(f"**現在値:** {row['現在値']} {row['通貨']} | **目標:** {row['目標買値']}")
-                    st.caption(f"PER: {row['PER']}倍 | PBR: {row['PBR']}倍 | RSI: {row['RSI(過熱感)']}%")
-                
-                with col_right:
-                    st.write("") # 上部余白
-                    if st.button("チャート 📈", key=f"btn_{row['Ticker']}"):
-                        st.session_state.selected_ticker = row['Ticker']
-                        st.session_state.active_tab = "📈 マルチタイムフレーム"
-                        st.rerun()
-                
-        st.markdown("---")
-        with st.expander("📊 全データの表を見る"):
-            st.dataframe(display_df, use_container_width=True)
+        if display_df.empty:
+            st.info("現在「今すぐ買い」の条件を満たす銘柄はありません。")
+        else:
+            for idx, row in display_df.head(10).iterrows():
+                with st.container(border=True):
+                    col_left, col_right = st.columns([3, 1])
+                    with col_left:
+                        st.markdown(f"#### **{idx}位 : {row['銘柄名']}** (`{row['Ticker']}`)")
+                        st.write(f"**判定:** {row['推奨アクション']} | **スコア:** {row['総合スコア']}点")
+                        st.write(f"**現在値:** {row['現在値']} {row['通貨']} | **目標:** {row['目標買値']}")
+                        st.caption(f"PER: {row['PER']}倍 | PBR: {row['PBR']}倍 | RSI: {row['RSI(過熱感)']}%")
+                    with col_right:
+                        st.write("") 
+                        if st.button("チャート 📈", key=f"btn_{row['Ticker']}"):
+                            st.session_state.selected_ticker = row['Ticker']
+                            st.session_state.active_tab = "📈 チャート"
+                            st.rerun()
+                    if row['初心者向けコメント']:
+                        st.info(row['初心者向けコメント'])
+                    
+            st.markdown("---")
+            with st.expander("📊 全データの表を見る"):
+                st.dataframe(display_df, use_container_width=True)
     else:
         st.warning("表示できるデータがありません。サイドバーから分析を実行してください。")
 
 # ------------------------------------------
 # TAB 2: マルチタイムフレーム分析
 # ------------------------------------------
-elif st.session_state.active_tab == "📈 マルチタイムフレーム":
+elif st.session_state.active_tab == "📈 チャート":
     st.header("📈 マルチタイムフレーム ＆ 出来高分析")
     if test_options:
         default_idx = 0
@@ -394,11 +437,10 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                     break
 
         mtf_ticker = st.selectbox(
-            "チャートを表示・分析する銘柄を検索・選択", 
+            "銘柄を検索・選択", 
             test_options, 
             key="mtf", 
-            index=default_idx,
-            placeholder="銘柄名（日本語）を入力して検索"
+            index=default_idx
         )
         
         if mtf_ticker:
@@ -408,9 +450,8 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
             if t_data:
                 st.markdown(f"## {t_data['銘柄名']} | 現在の株価: **{t_data['現在値']} {t_data['通貨']}**")
                 with st.container():
-                    st.markdown("#### 💡 基本評価指標（ランキング連動）")
                     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-                    m_col1.metric("総合買い時スコア", f"{t_data['総合スコア']}点")
+                    m_col1.metric("総合スコア", f"{t_data['総合スコア']}点")
                     with m_col2:
                         st.caption("推奨アクション")
                         st.markdown(f"**{t_data['推奨アクション']}**")
@@ -436,7 +477,7 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                 fig = make_subplots(
                     rows=2, cols=1, 
                     shared_xaxes=False, vertical_spacing=0.15,
-                    subplot_titles=(f"日足（短期のエントリー用） - {mtf_ticker}", f"週足（長期のトレンド確認用） - {mtf_ticker}"),
+                    subplot_titles=(f"日足（短期用） - {mtf_ticker}", f"週足（長期用） - {mtf_ticker}"),
                     specs=[[{"secondary_y": True}], [{"secondary_y": True}]]
                 )
                 
@@ -452,86 +493,32 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                 fig.update_xaxes(tickformat="%y/%m/%d", row=1, col=1)
                 fig.update_xaxes(tickformat="%y/%m", row=2, col=1)
                 
-                fig.update_yaxes(title_text="株価", secondary_y=False)
-                fig.update_yaxes(title_text="出来高", secondary_y=True, showgrid=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown("### 🤖 銘柄テクニカル ＆ ファンダメンタル診断")
-                rsi_val = latest['RSI']
-                is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
-                
-                if len(df_daily) >= 200:
-                    df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
-                    sma_val = df_daily['SMA200'].iloc[-1]
-                    is_uptrend = not pd.isna(sma_val) and (latest['Close'] > sma_val)
-                else:
-                    is_uptrend = None
-                
-                per_str = f"{t_data['PER']}倍" if t_data and t_data['PER'] != "-" else "データなし"
-                pbr_str = f"{t_data['PBR']}倍" if t_data and t_data['PBR'] != "-" else "データなし"
-                div_str = f"{t_data['配当利回り(%)']}%" if t_data and t_data['配当利回り(%)'] != "-" else "データなし"
-
                 col_f1, col_f2, col_f3 = st.columns(3)
-                col_f1.metric("PER (株価収益率)", per_str)
-                col_f2.metric("PBR (株価純資産倍率)", pbr_str)
-                col_f3.metric("配当利回り", div_str)
+                col_f1.metric("PER (株価収益率)", f"{t_data['PER']}倍" if t_data else "-")
+                col_f2.metric("PBR (株価純資産倍率)", f"{t_data['PBR']}倍" if t_data else "-")
+                col_f3.metric("配当利回り", f"{t_data['配当利回り(%)']}%" if t_data else "-")
                 
-                analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
-                
-                if is_uptrend is True:
-                    analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
-                elif is_uptrend is False:
-                    analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
-                
-                if not pd.isna(rsi_val):
-                    if rsi_val <= 35:
-                        analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙うチャンスです。\n"
-                    elif rsi_val >= 70:
-                        analysis_text += f"🔥 **過熱感 (RSI: {rsi_val:.1f}):** 70を超え「買われすぎ」です。高値掴みのリスクがあるため見送りを推奨します。\n"
-                    else:
-                        analysis_text += f"⚖️ **過熱感 (RSI: {rsi_val:.1f}):** 中立な状態です。\n"
-                    
-                if is_gc:
-                    analysis_text += "🟢 **MACD:** **ゴールデンクロス発生！** 短期的な下落が終わり、上昇トレンドに転換する初動のサインです。\n"
-                elif latest['MACD_Diff'] > 0:
-                    analysis_text += "📈 **MACD:** 短期的には上昇の勢いが強い状態です。\n"
-                else:
-                    analysis_text += "📉 **MACD:** 短期的には下落圧力がかかっています。底を打つまで様子見が無難です。\n"
-
-                st.info(analysis_text)
-                
-                st.markdown("### 📰 関連ニュース（最新ヘッドライン）")
+                st.markdown("### 📰 関連ニュース")
                 news_data = get_google_news(t_data['銘柄名'] if t_data else t_mtf)
                 if news_data:
                     for n in news_data:
                         st.write(f"- 🔗 [{n['title']}]({n['link']}) \n  *(配信日時: {n['date']})*")
                 else:
                     st.write("関連ニュースが見つかりませんでした。")
-                    
-            else:
-                st.warning("選択された銘柄のチャートデータを十分に取得できませんでした。")
 
 # ------------------------------------------
 # TAB 3: ポートフォリオ・売り時判定
 # ------------------------------------------
-elif st.session_state.active_tab == "💼 ポートフォリオ判定":
-    st.header("💼 保有銘柄の監視・高度な売り時判定")
-    all_master_tickers = {}
-    all_master_tickers.update(MAJOR_STOCKS_JP)
-    all_master_tickers.update(MAJOR_STOCKS_US)
-    all_master_tickers.update(get_nikkei225_tickers())
-    portfolio_ticker_options = [f"{name} ({code})" for name, code in all_master_tickers.items()]
+elif st.session_state.active_tab == "💼 ポートフォリオ":
+    st.header("💼 保有銘柄の監視")
     
-    with st.expander("➕ 新しい保有銘柄を追加 (検索対応)", expanded=True):
+    with st.expander("➕ 新しい保有銘柄を追加", expanded=True):
         with st.form("add_portfolio_form", clear_on_submit=True):
-            p_sel = st.selectbox(
-                "銘柄を検索・選択してください", 
-                portfolio_ticker_options, 
-                index=None, 
-                placeholder="ここをクリックして文字入力で検索"
-            )
+            p_sel = st.selectbox("銘柄を検索・選択", full_ticker_options, index=None)
             col1, col2, col3 = st.columns(3)
-            p_price = col1.number_input("平均買値 (1株あたり)", min_value=0.0, format="%.2f", step=10.0)
+            p_price = col1.number_input("平均買値", min_value=0.0, format="%.2f", step=10.0)
             p_shares = col2.number_input("保有株数", min_value=1)
             p_memo = col3.text_input("メモ")
             
@@ -546,147 +533,123 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
 
     if not st.session_state.portfolio_df.empty:
         status_data = []
-        total_profit = 0
-        win_count = 0
-        warning_count = 0
-        detailed_evaluations = []
-
         for idx, row in st.session_state.portfolio_df.iterrows():
             t = row['Ticker']
             try:
                 stock = yf.Ticker(t)
-                hist = stock.history(period="3mo")
+                hist = stock.history(period="1d")
                 if hist.empty: continue
-                
                 latest_price = float(hist['Close'].iloc[-1])
                 buy_price = float(row['買値'])
-                
                 profit_rate = ((latest_price - buy_price) / buy_price) * 100 if buy_price > 0 else 0
-                profit_value = (latest_price - buy_price) * float(row['株数'])
-                total_profit += profit_value
-                if profit_rate > 0: win_count += 1
-                
-                recent_high = float(hist['High'].max())
-                trailing_stop = recent_high * 0.90 
-                hard_stop_loss = buy_price * 0.85 
-                
-                bb = ta.volatility.BollingerBands(close=hist['Close'], window=20, window_dev=2)
-                bb_high = bb.bollinger_hband().iloc[-1]
-                sma25 = ta.trend.SMAIndicator(close=hist['Close'], window=25).sma_indicator().iloc[-1]
-                
-                sell_signal = "ホールド 🛡️"
-                if buy_price > 0:
-                    if latest_price <= hard_stop_loss:
-                        sell_signal = "💀 損切りライン到達"
-                        warning_count += 1
-                    elif latest_price <= trailing_stop and profit_rate > 0:
-                        sell_signal = "📉 トレール割れ (利益確保)"
-                        warning_count += 1
-                    elif not pd.isna(bb_high) and latest_price > bb_high:
-                        sell_signal = "🔥 BB+2σ超え (短期利確警戒)"
-                    elif not pd.isna(sma25) and latest_price < sma25 and profit_rate > 0:
-                        sell_signal = "⚠️ 短期トレンド崩れ (利確検討)"
                 
                 jp_name_found = t
                 for name, code in all_master_tickers.items():
-                    if code == t:
-                        jp_name_found = name
-                        break
+                    if code == t: jp_name_found = name; break
 
                 status_data.append({
-                    "Ticker": t,
-                    "銘柄名": jp_name_found,
-                    "現在のアクション": sell_signal,
-                    "現在値": f"{latest_price:,.1f}",
-                    "買値": f"{buy_price:,.1f}",
-                    "含み損益": f"{profit_value:,.1f}",
+                    "Ticker": t, "銘柄名": jp_name_found, 
+                    "現在値": f"{latest_price:,.1f}", "買値": f"{buy_price:,.1f}",
                     "損益率(%)": round(profit_rate, 2)
                 })
-
-                eval_text = ""
-                target_price_20 = buy_price * 1.20
-                stop_loss_10 = buy_price * 0.90
-
-                if latest_price >= target_price_20:
-                    eval_text += f"- **🎯 利確目線**: すでに+20%以上の利益（目安: {target_price_20:,.1f}）が出ています。一部利益確定や逆指値の引き上げを推奨します。\n"
-                elif latest_price > buy_price:
-                    eval_text += "- **🎯 利確目線**: 順調に含み益が出ています。このままトレンドに乗ってホールドし、利益を伸ばす方針が有効です。\n"
-                
-                if latest_price <= stop_loss_10:
-                    eval_text += f"- **🚨 損切り目線**: 買値から10%以上下落（防衛ライン: {stop_loss_10:,.1f}）しています。致命傷を防ぐため早めの損切り（撤退）を強く検討してください。\n"
-                elif latest_price < buy_price:
-                    eval_text += f"- **⚠️ 損切り目線**: 含み損です。あらかじめ決めた損切りライン（例: 買値の-8%）を割ったら迷わず売る準備をしてください。\n"
-                
-                if sell_signal == "ホールド 🛡️":
-                    eval_text += "- **💎 ホールド推奨**: テクニカル指標に大きな崩れはありません。中長期での保有継続をおすすめします。\n"
-                
-                detailed_evaluations.append({
-                    "name": jp_name_found,
-                    "ticker": t,
-                    "buy_price": buy_price,
-                    "current": latest_price,
-                    "eval": eval_text
-                })
-
             except Exception:
                 continue
                 
         if status_data:
             st.dataframe(pd.DataFrame(status_data), use_container_width=True)
-            col_a, col_b, col_c = st.columns(3)
-            pf_len = len(status_data)
-            win_rate = (win_count / pf_len) * 100 if pf_len > 0 else 0
-            
-            col_a.metric("トータル含み損益", f"¥{total_profit:,.0f}")
-            col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
-            
-            if warning_count > 0:
-                col_c.error(f"⚠️ {warning_count}銘柄に利確・損切りのサインが出ています。")
-            else:
-                col_c.success("🌟 トレンドに乗れています。ホールド継続推奨。")
-
-            st.markdown("---")
-            st.markdown("### 🤖 多角的な判定・アドバイス詳細")
-            for item in detailed_evaluations:
-                with st.expander(f"📌 {item['name']} ({item['ticker']}) - 買値: {item['buy_price']:,.1f} → 現在値: {item['current']:,.1f}", expanded=False):
-                    st.markdown(item['eval'])
-
-        if st.button("ポートフォリオを全件リセット", type="primary"):
-            st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
-            if os.path.exists(PORTFOLIO_FILE): os.remove(PORTFOLIO_FILE)
-            st.rerun()
 
 # ------------------------------------------
 # TAB 4: 資金配分
 # ------------------------------------------
 elif st.session_state.active_tab == "💰 資金配分":
-    st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
-    total_budget = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
+    st.header("💰 分散投資シミュレーター")
+    st.info("予算を入力し、買いたい銘柄を選ぶとシミュレーションができます。")
+
+# ------------------------------------------
+# TAB 5: LINE Messaging API通知
+# ------------------------------------------
+elif st.session_state.active_tab == "🔔 LINE通知":
+    st.header("🔔 LINE Messaging API 株価アラート設定")
+    st.markdown("""
+    **💡 あらかじめ設定されたトークンとユーザーIDが初期入力されています。**
+    """)
     
-    if test_options:
-        selected_for_sim = st.multiselect(
-            "分散投資したい銘柄を選択", test_options, default=test_options[:2] if len(test_options)>1 else test_options
-        )
-        sim_data, used_budget_jpy = [], 0
-        for sel in selected_for_sim:
-            t_sim = sel.split("(")[-1].replace(")", "")
-            t_data = next((r for r in market_data if r['Ticker'] == t_sim), None)
-            if t_data:
-                price, currency = t_data['現在値'], t_data['通貨']
-                shares = st.number_input(f"{sel} の購入株数", min_value=0, value=10, key=f"sim_{t_sim}")
-                cost_local = price * shares
-                cost_jpy = cost_local * usd_jpy_rate if currency == "USD" else cost_local
-                used_budget_jpy += cost_jpy
-                sim_data.append({"銘柄": sel, "1株価格": f"{price:,.2f} {currency}", "株数": shares, "必要資金(円換算)": f"¥{round(cost_jpy):,}"})
-        
-        if sim_data:
-            st.dataframe(pd.DataFrame(sim_data), use_container_width=True)
-            remaining = total_budget - used_budget_jpy
+    col_t1, col_t2 = st.columns(2)
+    line_access_token = col_t1.text_input("🔑 チャネルアクセストークン", value=DEFAULT_LINE_TOKEN, type="password")
+    line_user_id = col_t2.text_input("👤 Your user ID (ユーザーID)", value=DEFAULT_LINE_USER_ID, type="password")
+    
+    with st.expander("➕ 新しい通知アラートを登録", expanded=True):
+        with st.form("add_alert_form", clear_on_submit=True):
+            a_sel = st.selectbox("監視する銘柄を選択", full_ticker_options, index=None)
             col1, col2 = st.columns(2)
-            col1.metric("使用資金(円)", f"¥{used_budget_jpy:,.0f}")
-            if remaining >= 0:
-                col2.metric("予算残高(円)", f"¥{remaining:,.0f}")
-                st.success(f"予算内です！残り {remaining:,.0f} 円は現金余力として待機できます。")
+            a_condition = col1.radio("通知条件", ["指定価格以下になったら (買い時)", "指定価格以上になったら (売り時)"])
+            a_price = col2.number_input("目標価格", min_value=0.0, format="%.2f", step=10.0)
+            
+            if st.form_submit_button("アラート登録"):
+                if a_sel and a_price > 0:
+                    t_code = a_sel.split("(")[-1].replace(")", "")
+                    t_name = a_sel.split(" (")[0]
+                    new_alert = pd.DataFrame([{"Ticker": t_code, "銘柄名": t_name, "通知条件": a_condition, "目標価格": a_price}])
+                    st.session_state.alerts_df = pd.concat([st.session_state.alerts_df, new_alert], ignore_index=True)
+                    st.session_state.alerts_df.to_csv(ALERTS_FILE, index=False)
+                    st.success(f"{t_name} のアラートを登録しました！")
+                    st.rerun()
+
+    if not st.session_state.alerts_df.empty:
+        st.subheader("📋 登録中のアラート一覧")
+        st.dataframe(st.session_state.alerts_df, use_container_width=True)
+        
+        if st.button("🔄 監視を実行（条件合致でLINE送信）", type="primary"):
+            if not line_access_token or not line_user_id:
+                st.error("上の入力欄に『アクセストークン』と『ユーザーID』を入力してください。")
             else:
-                col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
-                st.error("予算をオーバーしています。")
+                with st.spinner("現在の株価を取得し、アラートをチェック中..."):
+                    notified_count = 0
+                    for idx, row in st.session_state.alerts_df.iterrows():
+                        t = row['Ticker']
+                        target_p = float(row['目標価格'])
+                        cond = row['通知条件']
+                        name = row['銘柄名']
+                        
+                        try:
+                            stock = yf.Ticker(t)
+                            hist = stock.history(period="1d")
+                            if hist.empty: continue
+                            current_p = float(hist['Close'].iloc[-1])
+                            
+                            trigger = False
+                            if "以下" in cond and current_p <= target_p:
+                                trigger = True
+                            elif "以上" in cond and current_p >= target_p:
+                                trigger = True
+                                
+                            if trigger:
+                                message_text = f"🚨 株価アラート発動！\n銘柄: {name} ({t})\n現在値: {current_p:,.2f}\n条件: {target_p:,.2f} {cond.split(' ')[0]}"
+                                
+                                url = "https://api.line.me/v2/bot/message/push"
+                                headers = {
+                                    "Authorization": f"Bearer {line_access_token}",
+                                    "Content-Type": "application/json"
+                                }
+                                payload = {
+                                    "to": line_user_id,
+                                    "messages": [{"type": "text", "text": message_text}]
+                                }
+                                
+                                res = requests.post(url, headers=headers, json=payload)
+                                if res.status_code == 200:
+                                    st.success(f"📱 {name} のアラートをLINEに送信しました！")
+                                    notified_count += 1
+                                else:
+                                    st.error(f"送信失敗 ({res.status_code}): トークンやIDを確認してください。\nエラー内容: {res.text}")
+                        except Exception as e:
+                            st.write(f"エラー: {e}")
+                            continue
+                            
+                    if notified_count == 0:
+                        st.info("現在、条件を満たしている銘柄はありませんでした。")
+                        
+        if st.button("アラートを全件リセット"):
+            st.session_state.alerts_df = pd.DataFrame(columns=["Ticker", "銘柄名", "通知条件", "目標価格"])
+            if os.path.exists(ALERTS_FILE): os.remove(ALERTS_FILE)
+            st.rerun()
