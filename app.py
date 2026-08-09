@@ -23,7 +23,7 @@ MAJOR_STOCKS_JP = {
     "ソニーグループ": "6758.T", "日立製作所": "6501.T", "信越化学工業": "4063.T",
     "オリックス": "8591.T", "ホンダ": "7267.T", "JT (日本たばこ産業)": "2914.T",
     "ファーストリテイリング": "9983.T", "ソフトバンクグループ": "9984.T", 
-    "東京エレクトロン": "8035.T", "LIXIL": "5938.T" 
+    "東京エレクトロン": "8035.T", "LIXIL": "5938.T", "ダイキン": "6367.T"
 }
 
 MAJOR_STOCKS_US = {
@@ -50,7 +50,7 @@ def get_nikkei225_tickers():
         "5401.T 日本製鉄,5406.T 神戸製鋼所,5411.T JFEHD,5541.T 大平洋金属,5631.T 日本製鋼所,5703.T 日本軽金属,5706.T 三井金属,5711.T 三菱マテリアル,5713.T 住友金属鉱山,5714.T DOWA,5801.T 古河電工,5802.T 住友電工,5803.T フジクラ,5831.T しずおかFG,5938.T LIXIL,6098.T リクルートHD,6103.T オークマ,6118.T アイダ,6273.T SMC,6301.T コマツ,6302.T 住友重機械,6305.T 日立建機,6326.T クボタ,6361.T 荏原製作所,6367.T ダイキン,6471.T 日本精工,6472.T NTN,6473.T ジェイテクト,6501.T 日立製作所,6503.T 三菱電機,6504.T 富士電機,6506.T 安川電機,6526.T ソシオネクスト,6594.T ニデック,"
         "6645.T オムロン,6701.T NEC,6702.T 富士通,6723.T ルネサス,6724.T エプソン,6752.T パナソニック,6758.T ソニーG,6762.T TDK,6770.T アルプスアルパイン,6841.T 横河電機,6857.T アドバンテスト,6861.T キーエンス,6902.T デンソー,6952.T カシオ,6954.T ファナック,6971.T 京セラ,6976.T 太陽誘電,6981.T 村田製作所,6988.T 日東電工,"
         "7011.T 三菱重工,7012.T 川崎重工,7013.T IHI,7186.T コンコルディア,7201.T 日産自動車,7202.T いすゞ自動車,7203.T トヨタ自動車,7205.T 日野自動車,7211.T 三菱自動車,7261.T マツダ,7267.T ホンダ,7269.T スズキ,7270.T SUBARU,7272.T ヤマハ発動機,7731.T ニコン,7733.T オリンパス,7735.T SCREEN,7741.T HOYA,7751.T キヤノン,7752.T リコー,7762.T シチズン時計,7832.T バンダイナムコ,7911.T TOPPAN,7912.T 大日本印刷,7951.T ヤマハ,7974.T 任天堂,"
-        "8001.T 伊藤忠商事,8002.T 丸紅,8015.T 豊田通商,8031.T 三井物産,8035.T 東京エレクトロン,8053.T 住友商事,8058.T 三菱商事,8233.T 高島屋,8252.T 丸井G,8267.T イオン,8304.T あおぞら銀行,8306.T 三菱UFJ,8308.T りそなHD,8309.T 三井住友トラスト,8316.T 三井住友FG,8331.T 千葉銀行,8354.T ふくおかFG,8411.T みずほFG,8591.T オリックス,8601.T 大和証券G,8604.T 野村HD,8628.T 松井証券,8630.T SOMPOHD,8725.T MS&AD,8750.T 第一生命HD,8766.T 東京海上HD,8795.T T&DHD,8801.T 三井不動産,8802.T 三菱地所,8804.T 東京建物,8830.T 住友不動産,"
+        "8001.T 伊藤商事,8002.T 丸紅,8015.T 豊田通商,8031.T 三井物産,8035.T 東京エレクトロン,8053.T 住友商事,8058.T 三菱商事,8233.T 高島屋,8252.T 丸井G,8267.T イオン,8304.T あおぞら銀行,8306.T 三菱UFJ,8308.T りそなHD,8309.T 三井住友トラスト,8316.T 三井住友FG,8331.T 千葉銀行,8354.T ふくおかFG,8411.T みずほFG,8591.T オリックス,8601.T 大和証券G,8604.T 野村HD,8628.T 松井証券,8630.T SOMPOHD,8725.T MS&AD,8750.T 第一生命HD,8766.T 東京海上HD,8795.T T&DHD,8801.T 三井不動産,8802.T 三菱地所,8804.T 東京建物,8830.T 住友不動産,"
         "9001.T 東武鉄道,9005.T 東急,9007.T 小田急電鉄,9008.T 京王電鉄,9009.T 京成電鉄,9020.T JR東日本,9021.T JR西日本,9022.T JR東海,9064.T ヤマトHD,9101.T 日本郵船,9104.T 商船三井,9107.T 川崎汽船,9147.T NIPPON EXPRESS,9201.T 日本航空,9202.T ANAHD,9301.T 三菱倉庫,9432.T NTT,9433.T KDDI,9434.T ソフトバンク,9501.T 東京電力HD,9502.T 中部電力,9503.T 関西電力,9531.T 東京ガス,9532.T 大阪ガス,9602.T 東宝,9613.T NTTデータG,9735.T セコム,9766.T コナミG,9843.T ニトリHD,9983.T ファーストリテイリング,9984.T ソフトバンクG"
     )
     tickers = {}
@@ -61,26 +61,40 @@ def get_nikkei225_tickers():
     return tickers
 
 @st.cache_data(ttl=3600)
-def get_exchange_rate():
+def get_macro_data():
+    """マクロ指標（日経平均、S&P500、為替）を取得"""
     try:
-        return yf.Ticker("JPY=X").history(period="1d")['Close'].iloc[-1]
+        data = yf.download("^N225 ^GSPC JPY=X", period="2d", group_by="ticker")
+        res = {}
+        for t in ["^N225", "^GSPC", "JPY=X"]:
+            if t in data:
+                close_prices = data[t]['Close'].dropna()
+                if len(close_prices) >= 2:
+                    current = close_prices.iloc[-1]
+                    prev = close_prices.iloc[-2]
+                    res[t] = {"price": current, "diff": current - prev, "diff_pct": (current - prev) / prev * 100}
+        return res
     except Exception:
-        return 150.0
+        return {}
 
 def analyze_single_stock(name, ticker):
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
-        # 15日未満の場合は計算不可としてスキップ
         if df.empty or len(df) < 15: return None
         
         info = stock.info
         display_name = name
         
+        # テクニカル指標の計算
         df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-        
         macd = ta.trend.MACD(close=df['Close'])
         df['MACD_Diff'] = macd.macd_diff()
+        
+        # ボリンジャーバンド
+        bb = ta.volatility.BollingerBands(close=df['Close'], window=20, window_dev=2)
+        df['BB_High'] = bb.bollinger_hband()
+        df['BB_Low'] = bb.bollinger_lband()
         
         latest = df.iloc[-1]
         prev = df.iloc[-2]
@@ -89,12 +103,25 @@ def analyze_single_stock(name, ticker):
         
         macd_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
         
-        # 200日未満の銘柄も除外しないよう条件分岐を追加
         if len(df) >= 200:
             df['SMA200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
-            long_trend = "上昇中 ☀️" if latest['Close'] > df['SMA200'].iloc[-1] else "下落中 ☔"
+            is_uptrend = latest['Close'] > df['SMA200'].iloc[-1]
+            long_trend = "上昇中 ☀️" if is_uptrend else "下落中 ☔"
         else:
+            is_uptrend = False
             long_trend = "データ蓄積中 ➖"
+            
+        # --- 独自買い時スコアの算出 (100点満点目安) ---
+        score = 0
+        # 1. 長期トレンドに乗っているか (最大30点)
+        if is_uptrend: score += 30
+        # 2. MACDの勢い・反転サイン (最大40点)
+        if macd_gc: score += 40
+        elif latest['MACD_Diff'] > 0: score += 15
+        # 3. RSIの押し目感 (最大30点)
+        if 30 <= rsi_val <= 45: score += 30
+        elif rsi_val < 30: score += 10 # 下がりすぎは警戒で点数控えめ
+        elif 45 < rsi_val <= 60: score += 10
         
         currency = info.get('currency', 'JPY')
         min_investment = latest['Close']
@@ -102,6 +129,7 @@ def analyze_single_stock(name, ticker):
         return {
             "Ticker": ticker,
             "銘柄名": display_name,
+            "総合スコア": score,
             "セクター": info.get('sector', '不明'),
             "通貨": currency,
             "現在値": round(latest['Close'], 2),
@@ -145,6 +173,23 @@ if "portfolio_df" not in st.session_state:
         st.session_state.portfolio_df = pd.read_csv(PORTFOLIO_FILE)
     else:
         st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
+        
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = None
+
+# ==========================================
+# マクロサマリー (Dashboard Top)
+# ==========================================
+macro_data = get_macro_data()
+if macro_data:
+    col_m1, col_m2, col_m3 = st.columns(3)
+    if "^N225" in macro_data:
+        col_m1.metric("日経平均", f"¥{macro_data['^N225']['price']:,.2f}", f"{macro_data['^N225']['diff']:,.2f} ({macro_data['^N225']['diff_pct']:.2f}%)")
+    if "^GSPC" in macro_data:
+        col_m2.metric("S&P 500", f"${macro_data['^GSPC']['price']:,.2f}", f"{macro_data['^GSPC']['diff']:,.2f} ({macro_data['^GSPC']['diff_pct']:.2f}%)")
+    if "JPY=X" in macro_data:
+        col_m3.metric("ドル円 (USD/JPY)", f"¥{macro_data['JPY=X']['price']:,.2f}", f"{macro_data['JPY=X']['diff']:,.2f} ({macro_data['JPY=X']['diff_pct']:.2f}%)", delta_color="inverse")
+st.markdown("---")
 
 # ==========================================
 # ⚙️ サイドバー
@@ -184,24 +229,24 @@ if "market_data" not in st.session_state or submitted:
         st.session_state.market_choice_name = market_choice
 
 market_data = st.session_state.market_data
-test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market_data])
-usd_jpy_rate = get_exchange_rate()
+test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market_data]) if market_data else []
+usd_jpy_rate = macro_data.get("JPY=X", {}).get("price", 150.0) if macro_data else 150.0
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("📖 投資用語集 (初心者向け)", expanded=False):
     st.markdown("""
-    - **RSI**: 「買われすぎ」「売られすぎ」を0〜100で表す温度計。**30以下**なら売られすぎ。
+    - **RSI**: 「買われすぎ」「売られすぎ」を0〜100で表す。**30以下**なら売られすぎ。
     - **MACD**: トレンドの「方向」と「勢い」を見る指標。
-    - **ゴールデンクロス (GC)**: 短期線が長期線を下から上に突き抜けること。下落トレンドが終わり、上昇トレンドに入る初動の強力な買いサイン。
-    - **SMA200**: 200日移動平均線。これが上向きなら「長期的に上昇トレンド（☀️）」と判断。
+    - **ゴールデンクロス (GC)**: 短期線が長期線を下から上に突き抜けること。上昇トレンド初動のサイン。
+    - **総合スコア**: 「長期トレンド」「MACDの勢い」「RSIの割安感」を組み合わせて算出した独自の買い推奨度。
     """)
 
 # ==========================================
 # UI タブ構成
 # ==========================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🏆 買い時ランキング", "💼 ポートフォリオ", 
-    "📈 マルチタイムフレーム", "💰 資金配分", "🏢 セクター"
+    "🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", 
+    "💰 資金配分", "🏢 セクター"
 ])
 
 # ------------------------------------------
@@ -209,19 +254,124 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # ------------------------------------------
 with tab1:
     st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} 買い時ランキング")
+    st.info("💡 **Tips:** 表の行をクリック（選択）すると、その銘柄が「マルチタイムフレーム」タブに自動連携されます。")
     if market_data:
-        res_df = pd.DataFrame(market_data).sort_values('RSI(過熱感)', ascending=True)
+        # スコア順にソート (高い順)
+        res_df = pd.DataFrame(market_data).sort_values('総合スコア', ascending=False)
         display_df = res_df.reset_index(drop=True)
         display_df.index = display_df.index + 1
-        st.dataframe(display_df, use_container_width=True)
+        
+        # 行選択可能なデータフレーム (Streamlit 1.35以降の機能を利用)
+        event = st.dataframe(
+            display_df, 
+            use_container_width=True,
+            selection_mode="single-row",
+            on_select="rerun"
+        )
+        
+        if event and len(event.selection.rows) > 0:
+            selected_idx = event.selection.rows[0]
+            st.session_state.selected_ticker = display_df.iloc[selected_idx]['Ticker']
     else:
         st.warning("表示できるデータがありません。サイドバーから分析を実行してください。")
 
 # ------------------------------------------
-# TAB 2: ポートフォリオ・売り時判定
+# TAB 2: マルチタイムフレーム分析
 # ------------------------------------------
 with tab2:
-    st.header("💼 保有銘柄の監視・売り時判定")
+    st.header("📈 マルチタイムフレーム ＆ 出来高分析")
+    if test_options:
+        # Tab1で選択されたTickerがあればデフォルト値に設定
+        default_idx = 0
+        if st.session_state.selected_ticker:
+            for i, opt in enumerate(test_options):
+                if st.session_state.selected_ticker in opt:
+                    default_idx = i
+                    break
+
+        mtf_ticker = st.selectbox(
+            "チャートを表示・分析する銘柄を検索・選択", 
+            test_options, 
+            key="mtf", 
+            index=default_idx,
+            placeholder="銘柄名（日本語）を入力して検索"
+        )
+        
+        if mtf_ticker:
+            t_mtf = mtf_ticker.split("(")[-1].replace(")", "")
+            stock = yf.Ticker(t_mtf)
+            df_daily = stock.history(period="6mo", interval="1d")
+            df_weekly = stock.history(period="2y", interval="1wk")
+            
+            df_daily['RSI'] = ta.momentum.RSIIndicator(close=df_daily['Close'], window=14).rsi()
+            macd = ta.trend.MACD(close=df_daily['Close'])
+            df_daily['MACD_Diff'] = macd.macd_diff()
+            
+            latest = df_daily.iloc[-1]
+            prev = df_daily.iloc[-2]
+            
+            # サブプロットの作成 (出来高を2軸目で表示)
+            fig = make_subplots(
+                rows=2, cols=1, 
+                shared_xaxes=False, vertical_spacing=0.15,
+                subplot_titles=(f"日足（短期のエントリー用） - {mtf_ticker}", f"週足（長期のトレンド確認用） - {mtf_ticker}"),
+                specs=[[{"secondary_y": True}], [{"secondary_y": True}]]
+            )
+            
+            # 日足
+            fig.add_trace(go.Candlestick(x=df_daily.index, open=df_daily['Open'], high=df_daily['High'], low=df_daily['Low'], close=df_daily['Close'], name="日足"), row=1, col=1, secondary_y=False)
+            fig.add_trace(go.Bar(x=df_daily.index, y=df_daily['Volume'], name="出来高", marker_color='rgba(150, 150, 150, 0.4)'), row=1, col=1, secondary_y=True)
+            
+            # 週足
+            fig.add_trace(go.Candlestick(x=df_weekly.index, open=df_weekly['Open'], high=df_weekly['High'], low=df_weekly['Low'], close=df_weekly['Close'], name="週足"), row=2, col=1, secondary_y=False)
+            fig.add_trace(go.Bar(x=df_weekly.index, y=df_weekly['Volume'], name="週出来高", marker_color='rgba(150, 150, 150, 0.4)'), row=2, col=1, secondary_y=True)
+            
+            fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
+            fig.update_yaxes(title_text="株価", secondary_y=False)
+            fig.update_yaxes(title_text="出来高", secondary_y=True, showgrid=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # テクニカル診断
+            st.markdown("### 🤖 銘柄テクニカル診断（今買い時か？）")
+            rsi_val = latest['RSI']
+            is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
+            
+            if len(df_daily) >= 200:
+                df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
+                is_uptrend = latest['Close'] > df_daily['SMA200'].iloc[-1]
+            else:
+                is_uptrend = None
+            
+            analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
+            
+            if is_uptrend is True:
+                analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
+            elif is_uptrend is False:
+                analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
+            else:
+                analysis_text += "➖ **長期トレンド:** 上場から200日未満のため、判定待機中です。\n"
+                
+            if rsi_val <= 35:
+                analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙うチャンスです。\n"
+            elif rsi_val >= 70:
+                analysis_text += f"🔥 **過熱感 (RSI: {rsi_val:.1f}):** 70を超え「買われすぎ」です。高値掴みのリスクがあるため見送りを推奨します。\n"
+            else:
+                analysis_text += f"⚖️ **過熱感 (RSI: {rsi_val:.1f}):** 中立な状態です。\n"
+                
+            if is_gc:
+                analysis_text += "🟢 **MACD:** **ゴールデンクロス発生！** 短期的な下落が終わり、上昇トレンドに転換する初動のサインです。\n"
+            elif latest['MACD_Diff'] > 0:
+                analysis_text += "📈 **MACD:** 短期的には上昇の勢いが強い状態です。\n"
+            else:
+                analysis_text += "📉 **MACD:** 短期的には下落圧力がかかっています。底を打つまで様子見が無難です。\n"
+
+            st.info(analysis_text)
+
+# ------------------------------------------
+# TAB 3: ポートフォリオ・売り時判定 (高度化)
+# ------------------------------------------
+with tab3:
+    st.header("💼 保有銘柄の監視・高度な売り時判定")
     
     all_master_tickers = {}
     all_master_tickers.update(MAJOR_STOCKS_JP)
@@ -235,7 +385,7 @@ with tab2:
                 "銘柄を検索・選択してください", 
                 portfolio_ticker_options, 
                 index=None, 
-                placeholder="ここをクリックして文字入力で検索（例: LIXIL, 5938, TSM）"
+                placeholder="ここをクリックして文字入力で検索"
             )
             col1, col2, col3 = st.columns(3)
             p_price = col1.number_input("平均買値 (1株あたり)", min_value=0.0, format="%.2f", step=10.0)
@@ -261,37 +411,42 @@ with tab2:
             t = row['Ticker']
             try:
                 stock = yf.Ticker(t)
-                hist = stock.history(period="1mo")
+                hist = stock.history(period="3mo") # トレイル計算のため3ヶ月取得
                 if hist.empty: continue
                 
                 latest_price = hist['Close'].iloc[-1]
                 buy_price = row['買値']
-                
-                target_sell = buy_price * 1.10
-                stop_loss = buy_price * 0.90
                 
                 profit_rate = ((latest_price - buy_price) / buy_price) * 100 if buy_price > 0 else 0
                 profit_value = (latest_price - buy_price) * row['株数']
                 total_profit += profit_value
                 if profit_rate > 0: win_count += 1
                 
-                rsi = ta.momentum.RSIIndicator(hist['Close'], window=14).rsi().iloc[-1]
-                macd = ta.trend.MACD(hist['Close'])
-                macd_diff = macd.macd_diff().iloc[-1]
+                # --- 高度な売り判定ロジック ---
+                recent_high = hist['High'].max() # 過去3ヶ月の最高値
+                trailing_stop = recent_high * 0.90 # 最高値から10%下落でトレールストップ
+                hard_stop_loss = buy_price * 0.85 # 絶対損切りライン(-15%等、各自の許容範囲)
+                
+                # ボリンジャーバンド (+2σ) の計算
+                bb = ta.volatility.BollingerBands(close=hist['Close'], window=20, window_dev=2)
+                bb_high = bb.bollinger_hband().iloc[-1]
+                
+                # 短期トレンド (SMA25)
+                sma25 = ta.trend.SMAIndicator(close=hist['Close'], window=25).sma_indicator().iloc[-1]
                 
                 sell_signal = "ホールド 🛡️"
                 if buy_price > 0:
-                    if latest_price >= target_sell:
-                        sell_signal = "🎯 目標達成 (+10%超・利確推奨)"
-                    elif latest_price <= stop_loss:
-                        sell_signal = "💀 損切りライン到達 (-10%)"
+                    if latest_price <= hard_stop_loss:
+                        sell_signal = "💀 損切りライン到達 (致命傷回避)"
                         warning_count += 1
-                    elif rsi >= 70:
-                        sell_signal = "⚠️ RSI過熱 (そろそろ利確警戒)"
+                    elif latest_price <= trailing_stop and profit_rate > 0:
+                        sell_signal = "📉 トレール割れ (利益確保推奨)"
                         warning_count += 1
-                    elif macd_diff < 0 and profit_rate > 0:
-                        sell_signal = "📉 トレンド下落 (利益確保の目安)"
-
+                    elif latest_price > bb_high:
+                        sell_signal = "🔥 BB+2σ超え (短期利確警戒)"
+                    elif latest_price < sma25 and profit_rate > 0:
+                        sell_signal = "⚠️ 短期トレンド崩れ (利確検討)"
+                
                 jp_name_found = t
                 for name, code in all_master_tickers.items():
                     if code == t:
@@ -304,8 +459,8 @@ with tab2:
                     "現在のアクション": sell_signal,
                     "現在値": f"{latest_price:,.1f}",
                     "買値": f"{buy_price:,.1f}",
-                    "目標利確価格(+10%)": f"{target_sell:,.1f}",
-                    "損切りライン(-10%)": f"{stop_loss:,.1f}",
+                    "直近高値": f"{recent_high:,.1f}",
+                    "ﾄﾚｰﾙｽﾄｯﾌﾟ目安": f"{trailing_stop:,.1f}",
                     "含み損益": f"{profit_value:,.1f}",
                     "損益率(%)": round(profit_rate, 2),
                     "メモ": row['メモ']
@@ -325,9 +480,9 @@ with tab2:
             col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
             
             if warning_count > 0:
-                col_c.error(f"⚠️ {warning_count}銘柄に警戒サインが出ています。損切りや利確を検討しましょう。")
+                col_c.error(f"⚠️ {warning_count}銘柄に警戒・利確・損切りのサインが出ています。")
             elif pf_len > 0 and total_profit > 0:
-                col_c.success("🌟 非常に健全な状態です！このままトレンドに乗りましょう。")
+                col_c.success("🌟 トレンドに乗れています。このままホールドを継続しましょう。")
             else:
                 col_c.info("📊 経過観察中です。")
 
@@ -337,82 +492,10 @@ with tab2:
             st.rerun()
 
 # ------------------------------------------
-# TAB 3: マルチタイムフレーム分析
-# ------------------------------------------
-with tab3:
-    st.header("📈 マルチタイムフレーム（複数時間軸）分析")
-    if test_options:
-        mtf_ticker = st.selectbox(
-            "チャートを表示・分析する銘柄を検索・選択", 
-            test_options, 
-            key="mtf", 
-            index=0,
-            placeholder="銘柄名（日本語）を入力して検索"
-        )
-        
-        if mtf_ticker:
-            t_mtf = mtf_ticker.split("(")[-1].replace(")", "")
-            stock = yf.Ticker(t_mtf)
-            df_daily = stock.history(period="6mo", interval="1d")
-            df_weekly = stock.history(period="2y", interval="1wk")
-            
-            df_daily['RSI'] = ta.momentum.RSIIndicator(close=df_daily['Close'], window=14).rsi()
-            macd = ta.trend.MACD(close=df_daily['Close'])
-            df_daily['MACD_Diff'] = macd.macd_diff()
-            
-            latest = df_daily.iloc[-1]
-            prev = df_daily.iloc[-2]
-            
-            fig = make_subplots(rows=2, cols=1, subplot_titles=(f"日足（短期のエントリー用） - {mtf_ticker}", f"週足（長期のトレンド確認用） - {mtf_ticker}"))
-            fig.add_trace(go.Candlestick(x=df_daily.index, open=df_daily['Open'], high=df_daily['High'], low=df_daily['Low'], close=df_daily['Close'], name="日足"), row=1, col=1)
-            fig.add_trace(go.Candlestick(x=df_weekly.index, open=df_weekly['Open'], high=df_weekly['High'], low=df_weekly['Low'], close=df_weekly['Close'], name="週足"), row=2, col=1)
-            fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-            st.markdown("### 🤖 銘柄テクニカル診断（今買い時か？）")
-            
-            rsi_val = latest['RSI']
-            is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
-            
-            # 200日未満の銘柄のエラー対策
-            if len(df_daily) >= 200:
-                df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
-                is_uptrend = latest['Close'] > df_daily['SMA200'].iloc[-1]
-            else:
-                is_uptrend = None
-            
-            analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
-            
-            if is_uptrend is True:
-                analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
-            elif is_uptrend is False:
-                analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
-            else:
-                analysis_text += "➖ **長期トレンド:** 上場から200日未満のため、長期トレンド判定は待機中です。\n"
-                
-            if rsi_val <= 35:
-                analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙う絶好のチャンス（買い時）の可能性があります。\n"
-            elif rsi_val >= 70:
-                analysis_text += f"🔥 **過熱感 (RSI: {rsi_val:.1f}):** 70を超えており「買われすぎ」です。今からの新規購入は高値掴みのリスクがあるため見送りを推奨します。\n"
-            else:
-                analysis_text += f"⚖️ **過熱感 (RSI: {rsi_val:.1f}):** 中立な状態です。極端な割安感はありません。\n"
-                
-            if is_gc:
-                analysis_text += "🟢 **MACD:** **ゴールデンクロスが発生しています！** 短期的な下落が終わり、上昇トレンドに転換する初動のサインが出ています。強気の買いシグナルです。\n"
-            elif latest['MACD_Diff'] > 0:
-                analysis_text += "📈 **MACD:** 短期的には上昇の勢い（モメンタム）が強い状態を維持しています。\n"
-            else:
-                analysis_text += "📉 **MACD:** 短期的には下落方向への圧力がかかっています。底を打つまで様子見が無難です。\n"
-
-            st.info(analysis_text)
-
-# ------------------------------------------
 # TAB 4: ミニ株・資金配分シミュレーション
 # ------------------------------------------
 with tab4:
     st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
-    st.markdown("全体予算(円)を入力してください。")
-    
     total_budget = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
     
     if test_options:
@@ -466,8 +549,8 @@ with tab5:
     if market_data:
         sec_df = pd.DataFrame(market_data)
         if 'セクター' in sec_df.columns:
-            sector_group = sec_df.groupby('セクター')['RSI(過熱感)'].mean().reset_index()
-            sector_group = sector_group.sort_values('RSI(過熱感)', ascending=True).reset_index(drop=True)
+            sector_group = sec_df.groupby('セクター')['総合スコア'].mean().reset_index()
+            sector_group = sector_group.sort_values('総合スコア', ascending=False).reset_index(drop=True)
             sector_group.index = sector_group.index + 1
             st.dataframe(sector_group, use_container_width=True)
         else:
