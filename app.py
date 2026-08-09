@@ -126,10 +126,8 @@ def analyze_single_stock(name, ticker):
         per = info.get('trailingPE', None)
         pbr = info.get('priceToBook', None)
         
-        # 【修正】配当利回りの異常値（Yahoo Financeのバグ対応）
         div_yield = info.get('dividendYield', None)
         if div_yield is not None:
-            # もし利回りが20% (0.2) を超えている場合は、すでに%化された数値が返ってきていると判定
             if div_yield > 0.2:
                 div_yield_disp = round(div_yield, 2)
             else:
@@ -137,7 +135,7 @@ def analyze_single_stock(name, ticker):
         else:
             div_yield_disp = "-"
         
-        # スコア計算
+        # 1. テクニカルスコア計算
         score = 0
         if is_uptrend: score += 30
         if macd_gc: score += 20
@@ -146,14 +144,37 @@ def analyze_single_stock(name, ticker):
         if 30 <= rsi_val <= 45: score += 30
         elif rsi_val < 30: score += 10 
         elif 45 < rsi_val <= 60: score += 10
-        
+
+        # 2. 【追加】ファンダメンタルズ補正 (割高判定ペナルティ)
+        overvalued_flag = False
+        if per and isinstance(per, (int, float)):
+            if per > 50:
+                score -= 30
+                overvalued_flag = True
+            elif per > 30:
+                score -= 15
+                overvalued_flag = True
+            elif 0 < per <= 15:
+                score += 15
+
+        if pbr and isinstance(pbr, (int, float)):
+            if pbr > 4.0:
+                score -= 15
+                overvalued_flag = True
+            elif 0 < pbr <= 1.0:
+                score += 10
+
+        # 3. アクション判定の更新
         if rsi_val > 70:
             action = "高値警戒（見送り） 🛑"
             target_str = f"過熱。{round(float(target_price), 1)} まで調整待ち"
             score = -50  
-        elif rsi_val <= 40 or macd_gc:
+        elif (rsi_val <= 40 or macd_gc) and not overvalued_flag:
             action = "今すぐ買い候補 🚀"
             target_str = "現在値付近が買い時"
+        elif (rsi_val <= 40 or macd_gc) and overvalued_flag:
+            action = "テクニカル良好（割高警戒） ⚠️"
+            target_str = f"高PER/PBR注意（押し目: {round(float(target_price), 1)}）"
         else:
             action = "様子見 ⏳"
             target_str = f"押し目目安: {round(float(target_price), 1)}"
@@ -325,38 +346,33 @@ if selected_tab != st.session_state.active_tab:
     st.rerun()
 
 # ------------------------------------------
-# TAB 1: 買い時ランキング
+# TAB 1: 買い時ランキング (モバイル最適化カード表示)
 # ------------------------------------------
 if st.session_state.active_tab == "🏆 買い時ランキング":
     st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} トップ10銘柄")
-    st.info("💡 右端のボタンをクリックすると、「マルチタイムフレーム」タブで詳細なチャート分析を確認できます。")
+    st.caption("💡 ボタンを押すと詳細チャート分析へ遷移します。")
     
     if market_data:
         res_df = pd.DataFrame(market_data).sort_values('総合スコア', ascending=False)
         display_df = res_df.reset_index(drop=True)
         display_df.index = display_df.index + 1
         
-        hc = st.columns([0.5, 2, 1, 2, 2.5, 1.5])
-        hc[0].markdown("**順位**")
-        hc[1].markdown("**銘柄名**")
-        hc[2].markdown("**現在値**")
-        hc[3].markdown("**推奨アクション**")
-        hc[4].markdown("**目標買値**")
-        hc[5].markdown("**分析**")
-        st.divider()
-        
+        # モバイル表示でも崩れない「カード型デザイン」
         for idx, row in display_df.head(10).iterrows():
-            c = st.columns([0.5, 2, 1, 2, 2.5, 1.5])
-            c[0].write(f"{idx}位")
-            c[1].write(f"**{row['銘柄名']}**\n\n`{row['Ticker']}`")
-            c[2].write(f"{row['現在値']} {row['通貨']}")
-            c[3].write(row['推奨アクション'])
-            c[4].write(row['目標買値'])
-            
-            if c[5].button("チャート確認 📈", key=f"btn_{row['Ticker']}"):
-                st.session_state.selected_ticker = row['Ticker']
-                st.session_state.active_tab = "📈 マルチタイムフレーム"
-                st.rerun()
+            with st.container(border=True):
+                col_left, col_right = st.columns([3, 1])
+                with col_left:
+                    st.markdown(f"#### **{idx}位 : {row['銘柄名']}** (`{row['Ticker']}`)")
+                    st.write(f"**判定:** {row['推奨アクション']} | **スコア:** {row['総合スコア']}点")
+                    st.write(f"**現在値:** {row['現在値']} {row['通貨']} | **目標:** {row['目標買値']}")
+                    st.caption(f"PER: {row['PER']}倍 | PBR: {row['PBR']}倍 | RSI: {row['RSI(過熱感)']}%")
+                
+                with col_right:
+                    st.write("") # 上部余白
+                    if st.button("チャート 📈", key=f"btn_{row['Ticker']}"):
+                        st.session_state.selected_ticker = row['Ticker']
+                        st.session_state.active_tab = "📈 マルチタイムフレーム"
+                        st.rerun()
                 
         st.markdown("---")
         with st.expander("📊 全データの表を見る"):
@@ -393,7 +409,6 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                 st.markdown(f"## {t_data['銘柄名']} | 現在の株価: **{t_data['現在値']} {t_data['通貨']}**")
                 with st.container():
                     st.markdown("#### 💡 基本評価指標（ランキング連動）")
-                    # 【修正】文字が見切れないように st.metric と st.markdown を併用
                     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                     m_col1.metric("総合買い時スコア", f"{t_data['総合スコア']}点")
                     with m_col2:
@@ -434,7 +449,6 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                 
                 fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
                 
-                # 【修正】X軸の日付フォーマットをスッキリ表示
                 fig.update_xaxes(tickformat="%y/%m/%d", row=1, col=1)
                 fig.update_xaxes(tickformat="%y/%m", row=2, col=1)
                 
