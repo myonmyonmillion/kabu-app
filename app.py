@@ -71,13 +71,13 @@ def analyze_single_stock(name, ticker):
     try:
         stock = yf.Ticker(ticker)
         df = stock.history(period="2y")
-        if df.empty or len(df) < 200: return None
+        # 15日未満の場合は計算不可としてスキップ
+        if df.empty or len(df) < 15: return None
         
         info = stock.info
         display_name = name
         
         df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
-        df['SMA200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
         
         macd = ta.trend.MACD(close=df['Close'])
         df['MACD_Diff'] = macd.macd_diff()
@@ -88,7 +88,13 @@ def analyze_single_stock(name, ticker):
         if pd.isna(rsi_val): return None
         
         macd_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
-        long_trend = "上昇中 ☀️" if latest['Close'] > latest['SMA200'] else "下落中 ☔"
+        
+        # 200日未満の銘柄も除外しないよう条件分岐を追加
+        if len(df) >= 200:
+            df['SMA200'] = ta.trend.SMAIndicator(close=df['Close'], window=200).sma_indicator()
+            long_trend = "上昇中 ☀️" if latest['Close'] > df['SMA200'].iloc[-1] else "下落中 ☔"
+        else:
+            long_trend = "データ蓄積中 ➖"
         
         currency = info.get('currency', 'JPY')
         min_investment = latest['Close']
@@ -150,7 +156,6 @@ with st.sidebar.form("search_form"):
     
     mode_choice = "主要銘柄"
     if market_choice == "🇯🇵 日本株":
-        # 💡 修正ポイント: 日経225全銘柄を先に配置してデフォルトに設定
         mode_choice = st.radio("📊 銘柄モード (日本株)", ["日経225全銘柄", "主要銘柄"])
     else:
         st.write("📊 銘柄モード: 主要米国株 (TSM等含む)")
@@ -308,22 +313,23 @@ with tab2:
             except Exception:
                 continue
                 
-        st.dataframe(pd.DataFrame(status_data), use_container_width=True)
+        if status_data:
+            st.dataframe(pd.DataFrame(status_data), use_container_width=True)
 
-        st.markdown("### 🧠 ポートフォリオ総合診断")
-        col_a, col_b, col_c = st.columns(3)
-        pf_len = len(status_data)
-        win_rate = (win_count / pf_len) * 100 if pf_len > 0 else 0
-        
-        col_a.metric("トータル含み損益", f"¥{total_profit:,.0f}")
-        col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
-        
-        if warning_count > 0:
-            col_c.error(f"⚠️ {warning_count}銘柄に警戒サインが出ています。損切りや利確を検討しましょう。")
-        elif pf_len > 0 and total_profit > 0:
-            col_c.success("🌟 非常に健全な状態です！このままトレンドに乗りましょう。")
-        else:
-            col_c.info("📊 経過観察中です。")
+            st.markdown("### 🧠 ポートフォリオ総合診断")
+            col_a, col_b, col_c = st.columns(3)
+            pf_len = len(status_data)
+            win_rate = (win_count / pf_len) * 100 if pf_len > 0 else 0
+            
+            col_a.metric("トータル含み損益", f"¥{total_profit:,.0f}")
+            col_b.metric("ポートフォリオ勝率", f"{win_rate:.1f}%", f"{win_count}勝 / {pf_len - win_count}敗")
+            
+            if warning_count > 0:
+                col_c.error(f"⚠️ {warning_count}銘柄に警戒サインが出ています。損切りや利確を検討しましょう。")
+            elif pf_len > 0 and total_profit > 0:
+                col_c.success("🌟 非常に健全な状態です！このままトレンドに乗りましょう。")
+            else:
+                col_c.info("📊 経過観察中です。")
 
         if st.button("ポートフォリオを全件リセット", type="primary"):
             st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
@@ -351,7 +357,6 @@ with tab3:
             df_weekly = stock.history(period="2y", interval="1wk")
             
             df_daily['RSI'] = ta.momentum.RSIIndicator(close=df_daily['Close'], window=14).rsi()
-            df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
             macd = ta.trend.MACD(close=df_daily['Close'])
             df_daily['MACD_Diff'] = macd.macd_diff()
             
@@ -368,14 +373,22 @@ with tab3:
             
             rsi_val = latest['RSI']
             is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
-            is_uptrend = latest['Close'] > latest['SMA200']
+            
+            # 200日未満の銘柄のエラー対策
+            if len(df_daily) >= 200:
+                df_daily['SMA200'] = ta.trend.SMAIndicator(close=df_daily['Close'], window=200).sma_indicator()
+                is_uptrend = latest['Close'] > df_daily['SMA200'].iloc[-1]
+            else:
+                is_uptrend = None
             
             analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
             
-            if is_uptrend:
+            if is_uptrend is True:
                 analysis_text += "☀️ **長期トレンド:** 200日移動平均線を上回っており、長期的な上昇トレンドに乗っています。\n"
-            else:
+            elif is_uptrend is False:
                 analysis_text += "☔ **長期トレンド:** 200日移動平均線を下回っており、長期的には下落傾向（または調整中）です。\n"
+            else:
+                analysis_text += "➖ **長期トレンド:** 上場から200日未満のため、長期トレンド判定は待機中です。\n"
                 
             if rsi_val <= 35:
                 analysis_text += f"📉 **過熱感 (RSI: {rsi_val:.1f}):** 30に近く「売られすぎ」の水準です。反発を狙う絶好のチャンス（買い時）の可能性があります。\n"
@@ -452,7 +465,10 @@ with tab5:
     st.header(f"🏢 セクター別 トレンド分析")
     if market_data:
         sec_df = pd.DataFrame(market_data)
-        sector_group = sec_df.groupby('セクター')['RSI(過熱感)'].mean().reset_index()
-        sector_group = sector_group.sort_values('RSI(過熱感)', ascending=True).reset_index(drop=True)
-        sector_group.index = sector_group.index + 1
-        st.dataframe(sector_group, use_container_width=True)
+        if 'セクター' in sec_df.columns:
+            sector_group = sec_df.groupby('セクター')['RSI(過熱感)'].mean().reset_index()
+            sector_group = sector_group.sort_values('RSI(過熱感)', ascending=True).reset_index(drop=True)
+            sector_group.index = sector_group.index + 1
+            st.dataframe(sector_group, use_container_width=True)
+        else:
+            st.warning("セクター情報が取得できませんでした。")
