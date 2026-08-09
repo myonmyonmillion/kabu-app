@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
-import Streamlit as st
+import streamlit as st
 import ta
 import yfinance as yf
 
