@@ -70,10 +70,6 @@ MAJOR_STOCKS_US = {
 PORTFOLIO_FILE = "portfolio.csv"
 ALERTS_FILE = "alerts.csv"
 
-# 環境変数（GitHub Secretsなど）から読み込み
-DEFAULT_LINE_TOKEN = os.environ.get("LINE_TOKEN", "")
-DEFAULT_LINE_USER_ID = os.environ.get("LINE_USER_ID", "")
-
 
 # ------------------------------------------
 # 関数群
@@ -912,21 +908,32 @@ elif st.session_state.active_tab == "💰 資金配分":
 # ------------------------------------------
 elif st.session_state.active_tab == "🔔 LINE通知":
   st.header("🔔 LINE Messaging API 株価アラート設定")
-  st.markdown("""
-    **💡 LINE APIキーは環境変数 (GitHub Secrets) 経由で保護されています。**
-    """)
 
-  col_t1, col_t2 = st.columns(2)
-  line_access_token = col_t1.text_input(
-      "🔑 チャネルアクセストークン", value=DEFAULT_LINE_TOKEN, type="password"
-  )
-  line_user_id = col_t2.text_input(
-      "👤 Your user ID (ユーザーID)", value=DEFAULT_LINE_USER_ID, type="password"
-  )
+  # Streamlit Cloud Secretsから安全に鍵を取得
+  try:
+    line_access_token = st.secrets.get(
+        "LINE_TOKEN", os.environ.get("LINE_TOKEN", "")
+    )
+    line_user_id = st.secrets.get(
+        "LINE_USER_ID", os.environ.get("LINE_USER_ID", "")
+    )
+  except Exception:
+    line_access_token = os.environ.get("LINE_TOKEN", "")
+    line_user_id = os.environ.get("LINE_USER_ID", "")
+
+  if line_access_token and line_user_id:
+    st.success(
+        "🔒 LINE APIキーはシークレット情報として安全に自動読み込みされています。"
+    )
+  else:
+    st.warning(
+        "⚠️ Streamlit Cloudの Secrets に LINE_TOKEN / LINE_USER_ID"
+        " が設定されていません。"
+    )
 
   if st.button("🧪 LINEテスト通知を送信（接続確認）"):
     if not line_access_token or not line_user_id:
-      st.error("アクセストークンとユーザーIDを設定してください。")
+      st.error("シークレット設定でトークンとユーザーIDを設定してください。")
     else:
       url = "https://api.line.me/v2/bot/message/push"
       headers = {
@@ -1010,9 +1017,7 @@ elif st.session_state.active_tab == "🔔 LINE通知":
     st.markdown("---")
     if st.button("🔄 監視を実行（条件合致でLINE送信）", type="primary"):
       if not line_access_token or not line_user_id:
-        st.error(
-            "上の入力欄に『アクセストークン』と『ユーザーID』を入力してください。"
-        )
+        st.error("シークレット設定でトークンとユーザーIDを設定してください。")
       else:
         with st.spinner("現在の株価を取得し、アラートをチェック中..."):
           notified_count = 0
