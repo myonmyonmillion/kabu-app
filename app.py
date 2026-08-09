@@ -6,6 +6,9 @@ import os
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import concurrent.futures
+import urllib.request
+import urllib.parse
+import xml.etree.ElementTree as ET
 
 # ------------------------------------------
 # ページ設定
@@ -187,6 +190,26 @@ def fetch_and_analyze(tickers_dict):
     progress_bar.empty()
     return data
 
+@st.cache_data(ttl=1800)
+def get_google_news(query):
+    # タイトルなしのバグを修正するためにGoogle News RSSから直接取得
+    news_list = []
+    try:
+        encoded_query = urllib.parse.quote(query + " 株")
+        url = f"https://news.google.com/rss/search?q={encoded_query}&hl=ja&gl=JP&ceid=JP:ja"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            xml_data = response.read()
+        root = ET.fromstring(xml_data)
+        for item in root.findall('.//item')[:5]:
+            title = item.find('title').text
+            link = item.find('link').text
+            pubDate = item.find('pubDate').text
+            news_list.append({'title': title, 'link': link, 'date': pubDate})
+    except Exception as e:
+        pass
+    return news_list
+
 # ==========================================
 # 初期化
 # ==========================================
@@ -237,6 +260,28 @@ with st.sidebar.form("search_form"):
     custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
     submitted = st.form_submit_button("🚀 この条件で分析を実行する")
 
+# 【追加】株勉強ページを検索フィルター箇所に配置
+st.sidebar.markdown("---")
+st.sidebar.header("📖 投資の教科書 (用語集)")
+with st.sidebar.expander("📝 株式用語と指標の解説を開く", expanded=False):
+    st.markdown("""
+    **✅ ファンダメンタルズ分析（企業価値）**
+    - **PER (株価収益率)**
+      企業の利益に対して株価が割安かを示します。一般的に15倍以下で割安とされます。
+    - **PBR (株価純資産倍率)**
+      企業の純資産（解散価値）に対する株価の割合です。1倍割れは非常にお買い得と見なされます。
+    - **配当利回り**
+      投資額に対して年間でもらえる配当金の割合です。3〜4%以上が高配当と呼ばれます。
+    
+    **✅ テクニカル分析（チャート・心理）**
+    - **RSI (相対力指数)**
+      買われすぎ・売られすぎの過熱感を示します。**70以上で買われすぎ、30以下で売られすぎ**の目安です。
+    - **MACD (マックディー)**
+      トレンドの方向を見る指標。シグナル線を下から上に抜ける「ゴールデンクロス」は強い買いサインです。
+    - **ボリンジャーバンド**
+      株価が収まりやすい範囲の帯。-2σ(一番下の帯)にタッチすると反発しやすい傾向があります。
+    """)
+
 if "market_data" not in st.session_state or submitted:
     target_tickers = {}
     if market_choice == "🇯🇵 日本株":
@@ -262,9 +307,9 @@ test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market
 usd_jpy_rate = macro_data.get("JPY=X", {}).get("price", 150.0) if macro_data else 150.0
 
 # ==========================================
-# カスタムUI タブ構成 (st.radioを使用)
+# カスタムUI タブ構成 (セクタータブを削除)
 # ==========================================
-tabs = ["🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", "💰 資金配分", "🏢 セクター"]
+tabs = ["🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", "💰 資金配分"]
 selected_tab = st.radio("メニュー", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True, label_visibility="collapsed")
 
 if selected_tab != st.session_state.active_tab:
@@ -335,6 +380,21 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
         
         if mtf_ticker:
             t_mtf = mtf_ticker.split("(")[-1].replace(")", "")
+            
+            # 【追加】現在の株価とランキングの情報をすべて載せる
+            t_data = next((r for r in market_data if r['Ticker'] == t_mtf), None)
+            if t_data:
+                st.markdown(f"## {t_data['銘柄名']} | 現在の株価: **{t_data['現在値']} {t_data['通貨']}**")
+                with st.container():
+                    st.markdown("#### 💡 基本評価指標（ランキング連動）")
+                    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+                    m_col1.metric("総合買い時スコア", f"{t_data['総合スコア']}点")
+                    m_col2.metric("推奨アクション", t_data['推奨アクション'])
+                    m_col3.metric("目標買値", t_data['目標買値'])
+                    m_col4.metric("RSI (過熱感)", f"{t_data['RSI(過熱感)']}%")
+            
+            st.markdown("---")
+            
             stock = yf.Ticker(t_mtf)
             df_daily = stock.history(period="6mo", interval="1d")
             df_weekly = stock.history(period="2y", interval="1wk")
@@ -380,7 +440,6 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                     is_uptrend = None
                 
                 # キャッシュデータからファンダメンタル指標を取得
-                t_data = next((r for r in market_data if r['Ticker'] == t_mtf), None)
                 per_str = f"{t_data['PER']}倍" if t_data and t_data['PER'] != "-" else "データなし"
                 pbr_str = f"{t_data['PBR']}倍" if t_data and t_data['PBR'] != "-" else "データなし"
                 div_str = f"{t_data['配当利回り(%)']}%" if t_data and t_data['配当利回り(%)'] != "-" else "データなし"
@@ -414,20 +473,14 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
 
                 st.info(analysis_text)
                 
-                # ニュースAPI連携 (センチメント分析対応への布石)
+                # 【修正】ニュースAPIのバグ修正（Google News RSS使用）
                 st.markdown("### 📰 関連ニュース（最新ヘッドライン）")
-                try:
-                    news_data = stock.news
-                    if news_data:
-                        for n in news_data[:5]:
-                            title = n.get('title', 'タイトルなし')
-                            link = n.get('link', '#')
-                            publisher = n.get('publisher', 'Unknown')
-                            st.write(f"- [{title}]({link}) ({publisher})")
-                    else:
-                        st.write("関連ニュースが見つかりませんでした。")
-                except Exception as e:
-                    st.write("ニュースの取得に失敗しました。")
+                news_data = get_google_news(t_data['銘柄名'] if t_data else t_mtf)
+                if news_data:
+                    for n in news_data:
+                        st.write(f"- 🔗 [{n['title']}]({n['link']}) \n  *(配信日時: {n['date']})*")
+                else:
+                    st.write("関連ニュースが見つかりませんでした。")
                     
             else:
                 st.warning("選択された銘柄のチャートデータを十分に取得できませんでした。")
@@ -470,6 +523,9 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
         total_profit = 0
         win_count = 0
         warning_count = 0
+
+        # 【追加】複数目線の評価コメント格納用
+        detailed_evaluations = []
 
         for idx, row in st.session_state.portfolio_df.iterrows():
             t = row['Ticker']
@@ -522,6 +578,33 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
                     "含み損益": f"{profit_value:,.1f}",
                     "損益率(%)": round(profit_rate, 2)
                 })
+
+                # 【追加】銘柄ごとの詳細な多角評価ロジック
+                eval_text = ""
+                target_price_20 = buy_price * 1.20
+                stop_loss_10 = buy_price * 0.90
+
+                if latest_price >= target_price_20:
+                    eval_text += f"- **🎯 利確目線**: すでに+20%以上の利益（目安: {target_price_20:,.1f}）が出ています。一部利益確定や逆指値の引き上げを推奨します。\n"
+                elif latest_price > buy_price:
+                    eval_text += "- **🎯 利確目線**: 順調に含み益が出ています。このままトレンドに乗ってホールドし、利益を伸ばす方針が有効です。\n"
+                
+                if latest_price <= stop_loss_10:
+                    eval_text += f"- **🚨 損切り目線**: 買値から10%以上下落（防衛ライン: {stop_loss_10:,.1f}）しています。致命傷を防ぐため早めの損切り（撤退）を強く検討してください。\n"
+                elif latest_price < buy_price:
+                    eval_text += f"- **⚠️ 損切り目線**: 含み損です。あらかじめ決めた損切りライン（例: 買値の-8%）を割ったら迷わず売る準備をしてください。\n"
+                
+                if sell_signal == "ホールド 🛡️":
+                    eval_text += "- **💎 ホールド推奨**: テクニカル指標に大きな崩れはありません。中長期での保有継続をおすすめします。\n"
+                
+                detailed_evaluations.append({
+                    "name": jp_name_found,
+                    "ticker": t,
+                    "buy_price": buy_price,
+                    "current": latest_price,
+                    "eval": eval_text
+                })
+
             except Exception:
                 continue
                 
@@ -538,6 +621,12 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
                 col_c.error(f"⚠️ {warning_count}銘柄に利確・損切りのサインが出ています。")
             else:
                 col_c.success("🌟 トレンドに乗れています。ホールド継続推奨。")
+
+            st.markdown("---")
+            st.markdown("### 🤖 多角的な判定・アドバイス詳細")
+            for item in detailed_evaluations:
+                with st.expander(f"📌 {item['name']} ({item['ticker']}) - 買値: {item['buy_price']:,.1f} → 現在値: {item['current']:,.1f}", expanded=False):
+                    st.markdown(item['eval'])
 
         if st.button("ポートフォリオを全件リセット", type="primary"):
             st.session_state.portfolio_df = pd.DataFrame(columns=["Ticker", "買値", "株数", "メモ"])
@@ -578,14 +667,3 @@ elif st.session_state.active_tab == "💰 資金配分":
             else:
                 col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
                 st.error("予算をオーバーしています。")
-
-# ------------------------------------------
-# TAB 5: セクター
-# ------------------------------------------
-elif st.session_state.active_tab == "🏢 セクター":
-    st.header("🏢 セクター別 トレンド分析")
-    if market_data:
-        sec_df = pd.DataFrame(market_data)
-        if 'セクター' in sec_df.columns:
-            sector_group = sec_df.groupby('セクター')['総合スコア'].mean().reset_index()
-            st.dataframe(sector_group.sort_values('総合スコア', ascending=False).reset_index(drop=True), use_container_width=True)
