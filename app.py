@@ -118,25 +118,33 @@ def analyze_single_stock(name, ticker):
         target_price = latest['BB_Low'] if not pd.isna(latest['BB_Low']) else latest['SMA25']
         currency = info.get('currency', 'JPY' if ticker.endswith('.T') else 'USD')
         
+        # ファンダメンタル指標の取得
+        per = info.get('trailingPE', None)
+        pbr = info.get('priceToBook', None)
+        div_yield = info.get('dividendYield', None)
+        
+        # スコア計算
+        score = 0
+        if is_uptrend: score += 30
+        # GCの評価を調整（+40 -> +20）過大評価を防ぐ
+        if macd_gc: score += 20
+        elif latest['MACD_Diff'] > 0: score += 10
+        
+        if 30 <= rsi_val <= 45: score += 30
+        elif rsi_val < 30: score += 10 
+        elif 45 < rsi_val <= 60: score += 10
+        
+        # アクション判定と高値警戒銘柄のペナルティ処理
         if rsi_val > 70:
             action = "高値警戒（見送り） 🛑"
             target_str = f"過熱。{round(float(target_price), 1)} まで調整待ち"
+            score = -50  # ランキング上位に入らないようにペナルティ
         elif rsi_val <= 40 or macd_gc:
             action = "今すぐ買い候補 🚀"
             target_str = "現在値付近が買い時"
         else:
             action = "様子見 ⏳"
             target_str = f"押し目目安: {round(float(target_price), 1)}"
-
-        # スコア計算
-        score = 0
-        if is_uptrend: score += 30
-        if macd_gc: score += 40
-        elif latest['MACD_Diff'] > 0: score += 15
-        
-        if 30 <= rsi_val <= 45: score += 30
-        elif rsi_val < 30: score += 10 
-        elif 45 < rsi_val <= 60: score += 10
         
         return {
             "Ticker": ticker,
@@ -147,7 +155,10 @@ def analyze_single_stock(name, ticker):
             "現在値": round(float(latest['Close']), 2),
             "推奨アクション": action,
             "目標買値": target_str,
-            "RSI(過熱感)": round(float(rsi_val), 1)
+            "RSI(過熱感)": round(float(rsi_val), 1),
+            "PER": round(per, 2) if per else "-",
+            "PBR": round(pbr, 2) if pbr else "-",
+            "配当利回り(%)": round(div_yield * 100, 2) if div_yield else "-"
         }
     except Exception:
         return None
@@ -190,6 +201,10 @@ if "portfolio_df" not in st.session_state:
         
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
+
+# カスタムタブ管理用の状態変数
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "🏆 買い時ランキング"
 
 # ==========================================
 # マクロサマリー
@@ -247,17 +262,19 @@ test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market
 usd_jpy_rate = macro_data.get("JPY=X", {}).get("price", 150.0) if macro_data else 150.0
 
 # ==========================================
-# UI タブ構成
+# カスタムUI タブ構成 (st.radioを使用)
 # ==========================================
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", 
-    "💰 資金配分", "🏢 セクター"
-])
+tabs = ["🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", "💰 資金配分", "🏢 セクター"]
+selected_tab = st.radio("メニュー", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True, label_visibility="collapsed")
+
+if selected_tab != st.session_state.active_tab:
+    st.session_state.active_tab = selected_tab
+    st.rerun()
 
 # ------------------------------------------
-# TAB 1: 買い時ランキング (リスト型UIに変更)
+# TAB 1: 買い時ランキング
 # ------------------------------------------
-with tab1:
+if st.session_state.active_tab == "🏆 買い時ランキング":
     st.header(f"🏆 {st.session_state.get('market_choice_name', '日本株')} トップ10銘柄")
     st.info("💡 右端のボタンをクリックすると、「マルチタイムフレーム」タブで詳細なチャート分析を確認できます。")
     
@@ -266,7 +283,6 @@ with tab1:
         display_df = res_df.reset_index(drop=True)
         display_df.index = display_df.index + 1
         
-        # ヘッダー行を作成
         hc = st.columns([0.5, 2, 1, 2, 2.5, 1.5])
         hc[0].markdown("**順位**")
         hc[1].markdown("**銘柄名**")
@@ -276,7 +292,6 @@ with tab1:
         hc[5].markdown("**分析**")
         st.divider()
         
-        # 上位10銘柄をボタン付きで表示
         for idx, row in display_df.head(10).iterrows():
             c = st.columns([0.5, 2, 1, 2, 2.5, 1.5])
             c[0].write(f"{idx}位")
@@ -285,10 +300,11 @@ with tab1:
             c[3].write(row['推奨アクション'])
             c[4].write(row['目標買値'])
             
-            # 各行に連携ボタンを配置
+            # チャート確認ボタンを押した時の処理
             if c[5].button("チャート確認 📈", key=f"btn_{row['Ticker']}"):
                 st.session_state.selected_ticker = row['Ticker']
-                st.rerun() # ボタンクリックでリロードし、状態を反映
+                st.session_state.active_tab = "📈 マルチタイムフレーム"
+                st.rerun()
                 
         st.markdown("---")
         with st.expander("📊 全データの表を見る"):
@@ -299,7 +315,7 @@ with tab1:
 # ------------------------------------------
 # TAB 2: マルチタイムフレーム分析
 # ------------------------------------------
-with tab2:
+elif st.session_state.active_tab == "📈 マルチタイムフレーム":
     st.header("📈 マルチタイムフレーム ＆ 出来高分析")
     if test_options:
         default_idx = 0
@@ -352,7 +368,7 @@ with tab2:
                 fig.update_yaxes(title_text="出来高", secondary_y=True, showgrid=False)
                 st.plotly_chart(fig, use_container_width=True)
 
-                st.markdown("### 🤖 銘柄テクニカル診断（今買い時か？）")
+                st.markdown("### 🤖 銘柄テクニカル ＆ ファンダメンタル診断")
                 rsi_val = latest['RSI']
                 is_gc = (prev['MACD_Diff'] < 0) and (latest['MACD_Diff'] > 0)
                 
@@ -362,6 +378,17 @@ with tab2:
                     is_uptrend = not pd.isna(sma_val) and (latest['Close'] > sma_val)
                 else:
                     is_uptrend = None
+                
+                # キャッシュデータからファンダメンタル指標を取得
+                t_data = next((r for r in market_data if r['Ticker'] == t_mtf), None)
+                per_str = f"{t_data['PER']}倍" if t_data and t_data['PER'] != "-" else "データなし"
+                pbr_str = f"{t_data['PBR']}倍" if t_data and t_data['PBR'] != "-" else "データなし"
+                div_str = f"{t_data['配当利回り(%)']}%" if t_data and t_data['配当利回り(%)'] != "-" else "データなし"
+
+                col_f1, col_f2, col_f3 = st.columns(3)
+                col_f1.metric("PER (株価収益率)", per_str)
+                col_f2.metric("PBR (株価純資産倍率)", pbr_str)
+                col_f3.metric("配当利回り", div_str)
                 
                 analysis_text = f"**【{mtf_ticker} の現状分析】**\n\n"
                 
@@ -386,13 +413,29 @@ with tab2:
                     analysis_text += "📉 **MACD:** 短期的には下落圧力がかかっています。底を打つまで様子見が無難です。\n"
 
                 st.info(analysis_text)
+                
+                # ニュースAPI連携 (センチメント分析対応への布石)
+                st.markdown("### 📰 関連ニュース（最新ヘッドライン）")
+                try:
+                    news_data = stock.news
+                    if news_data:
+                        for n in news_data[:5]:
+                            title = n.get('title', 'タイトルなし')
+                            link = n.get('link', '#')
+                            publisher = n.get('publisher', 'Unknown')
+                            st.write(f"- [{title}]({link}) ({publisher})")
+                    else:
+                        st.write("関連ニュースが見つかりませんでした。")
+                except Exception as e:
+                    st.write("ニュースの取得に失敗しました。")
+                    
             else:
                 st.warning("選択された銘柄のチャートデータを十分に取得できませんでした。")
 
 # ------------------------------------------
-# TAB 3: ポートフォリオ・売り時判定 (省略せず記述)
+# TAB 3: ポートフォリオ・売り時判定
 # ------------------------------------------
-with tab3:
+elif st.session_state.active_tab == "💼 ポートフォリオ判定":
     st.header("💼 保有銘柄の監視・高度な売り時判定")
     all_master_tickers = {}
     all_master_tickers.update(MAJOR_STOCKS_JP)
@@ -502,9 +545,9 @@ with tab3:
             st.rerun()
 
 # ------------------------------------------
-# TAB 4 & 5 (省略せず記述)
+# TAB 4: 資金配分
 # ------------------------------------------
-with tab4:
+elif st.session_state.active_tab == "💰 資金配分":
     st.header("💰 ミニ株・分散投資シミュレーター (日本円計算)")
     total_budget = st.number_input("投資予算を入力 (日本円)", min_value=10000, value=2000000, step=100000)
     
@@ -536,7 +579,10 @@ with tab4:
                 col2.metric("予算オーバー(円)", f"¥{remaining:,.0f}", delta_color="inverse")
                 st.error("予算をオーバーしています。")
 
-with tab5:
+# ------------------------------------------
+# TAB 5: セクター
+# ------------------------------------------
+elif st.session_state.active_tab == "🏢 セクター":
     st.header("🏢 セクター別 トレンド分析")
     if market_data:
         sec_df = pd.DataFrame(market_data)
