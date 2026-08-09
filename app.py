@@ -26,7 +26,8 @@ MAJOR_STOCKS_JP = {
     "ソニーグループ": "6758.T", "日立製作所": "6501.T", "信越化学工業": "4063.T",
     "オリックス": "8591.T", "ホンダ": "7267.T", "JT (日本たばこ産業)": "2914.T",
     "ファーストリテイリング": "9983.T", "ソフトバンクグループ": "9984.T", 
-    "東京エレクトロン": "8035.T", "LIXIL": "5938.T", "ダイキン": "6367.T"
+    "東京エレクトロン": "8035.T", "LIXIL": "5938.T", "ダイキン": "6367.T",
+    "村田製作所": "6981.T"
 }
 
 MAJOR_STOCKS_US = {
@@ -124,12 +125,21 @@ def analyze_single_stock(name, ticker):
         # ファンダメンタル指標の取得
         per = info.get('trailingPE', None)
         pbr = info.get('priceToBook', None)
+        
+        # 【修正】配当利回りの異常値（Yahoo Financeのバグ対応）
         div_yield = info.get('dividendYield', None)
+        if div_yield is not None:
+            # もし利回りが20% (0.2) を超えている場合は、すでに%化された数値が返ってきていると判定
+            if div_yield > 0.2:
+                div_yield_disp = round(div_yield, 2)
+            else:
+                div_yield_disp = round(div_yield * 100, 2)
+        else:
+            div_yield_disp = "-"
         
         # スコア計算
         score = 0
         if is_uptrend: score += 30
-        # GCの評価を調整（+40 -> +20）過大評価を防ぐ
         if macd_gc: score += 20
         elif latest['MACD_Diff'] > 0: score += 10
         
@@ -137,11 +147,10 @@ def analyze_single_stock(name, ticker):
         elif rsi_val < 30: score += 10 
         elif 45 < rsi_val <= 60: score += 10
         
-        # アクション判定と高値警戒銘柄のペナルティ処理
         if rsi_val > 70:
             action = "高値警戒（見送り） 🛑"
             target_str = f"過熱。{round(float(target_price), 1)} まで調整待ち"
-            score = -50  # ランキング上位に入らないようにペナルティ
+            score = -50  
         elif rsi_val <= 40 or macd_gc:
             action = "今すぐ買い候補 🚀"
             target_str = "現在値付近が買い時"
@@ -161,7 +170,7 @@ def analyze_single_stock(name, ticker):
             "RSI(過熱感)": round(float(rsi_val), 1),
             "PER": round(per, 2) if per else "-",
             "PBR": round(pbr, 2) if pbr else "-",
-            "配当利回り(%)": round(div_yield * 100, 2) if div_yield else "-"
+            "配当利回り(%)": div_yield_disp
         }
     except Exception:
         return None
@@ -192,7 +201,6 @@ def fetch_and_analyze(tickers_dict):
 
 @st.cache_data(ttl=1800)
 def get_google_news(query):
-    # タイトルなしのバグを修正するためにGoogle News RSSから直接取得
     news_list = []
     try:
         encoded_query = urllib.parse.quote(query + " 株")
@@ -206,7 +214,7 @@ def get_google_news(query):
             link = item.find('link').text
             pubDate = item.find('pubDate').text
             news_list.append({'title': title, 'link': link, 'date': pubDate})
-    except Exception as e:
+    except Exception:
         pass
     return news_list
 
@@ -225,7 +233,6 @@ if "portfolio_df" not in st.session_state:
 if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = None
 
-# カスタムタブ管理用の状態変数
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "🏆 買い時ランキング"
 
@@ -260,26 +267,27 @@ with st.sidebar.form("search_form"):
     custom_tickers_input = st.text_input("➕ 追加ティッカー (例: 8267.T, PLTR)")
     submitted = st.form_submit_button("🚀 この条件で分析を実行する")
 
-# 【追加】株勉強ページを検索フィルター箇所に配置
 st.sidebar.markdown("---")
 st.sidebar.header("📖 投資の教科書 (用語集)")
 with st.sidebar.expander("📝 株式用語と指標の解説を開く", expanded=False):
     st.markdown("""
     **✅ ファンダメンタルズ分析（企業価値）**
     - **PER (株価収益率)**
-      企業の利益に対して株価が割安かを示します。一般的に15倍以下で割安とされます。
+      企業の利益に対して株価が割安かを示します。一般的に15倍以下で割安。
     - **PBR (株価純資産倍率)**
-      企業の純資産（解散価値）に対する株価の割合です。1倍割れは非常にお買い得と見なされます。
+      企業の純資産（解散価値）に対する株価の割合。1倍割れはお買い得。
     - **配当利回り**
-      投資額に対して年間でもらえる配当金の割合です。3〜4%以上が高配当と呼ばれます。
+      投資額に対して年間でもらえる配当金の割合。3〜4%以上が高配当。
     
     **✅ テクニカル分析（チャート・心理）**
     - **RSI (相対力指数)**
-      買われすぎ・売られすぎの過熱感を示します。**70以上で買われすぎ、30以下で売られすぎ**の目安です。
+      買われすぎ・売られすぎの過熱感を示します。**70以上で買われすぎ、30以下で売られすぎ**。
     - **MACD (マックディー)**
-      トレンドの方向を見る指標。シグナル線を下から上に抜ける「ゴールデンクロス」は強い買いサインです。
+      トレンドの方向を見る指標。シグナル線を下から上に抜ける「ゴールデンクロス」は買いサイン。
     - **ボリンジャーバンド**
-      株価が収まりやすい範囲の帯。-2σ(一番下の帯)にタッチすると反発しやすい傾向があります。
+      株価が動く範囲を予測する帯（バンド）。
+      ・**-2σ（下の線）**に触れると「売られすぎ」で反発（買い）シグナル
+      ・**+2σ（上の線）**に触れると「買われすぎ」で下落（売り）シグナル
     """)
 
 if "market_data" not in st.session_state or submitted:
@@ -307,7 +315,7 @@ test_options = sorted([f"{row['銘柄名']} ({row['Ticker']})" for row in market
 usd_jpy_rate = macro_data.get("JPY=X", {}).get("price", 150.0) if macro_data else 150.0
 
 # ==========================================
-# カスタムUI タブ構成 (セクタータブを削除)
+# カスタムUI タブ構成
 # ==========================================
 tabs = ["🏆 買い時ランキング", "📈 マルチタイムフレーム", "💼 ポートフォリオ判定", "💰 資金配分"]
 selected_tab = st.radio("メニュー", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True, label_visibility="collapsed")
@@ -345,7 +353,6 @@ if st.session_state.active_tab == "🏆 買い時ランキング":
             c[3].write(row['推奨アクション'])
             c[4].write(row['目標買値'])
             
-            # チャート確認ボタンを押した時の処理
             if c[5].button("チャート確認 📈", key=f"btn_{row['Ticker']}"):
                 st.session_state.selected_ticker = row['Ticker']
                 st.session_state.active_tab = "📈 マルチタイムフレーム"
@@ -380,17 +387,21 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
         
         if mtf_ticker:
             t_mtf = mtf_ticker.split("(")[-1].replace(")", "")
-            
-            # 【追加】現在の株価とランキングの情報をすべて載せる
             t_data = next((r for r in market_data if r['Ticker'] == t_mtf), None)
+            
             if t_data:
                 st.markdown(f"## {t_data['銘柄名']} | 現在の株価: **{t_data['現在値']} {t_data['通貨']}**")
                 with st.container():
                     st.markdown("#### 💡 基本評価指標（ランキング連動）")
+                    # 【修正】文字が見切れないように st.metric と st.markdown を併用
                     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
                     m_col1.metric("総合買い時スコア", f"{t_data['総合スコア']}点")
-                    m_col2.metric("推奨アクション", t_data['推奨アクション'])
-                    m_col3.metric("目標買値", t_data['目標買値'])
+                    with m_col2:
+                        st.caption("推奨アクション")
+                        st.markdown(f"**{t_data['推奨アクション']}**")
+                    with m_col3:
+                        st.caption("目標買値")
+                        st.markdown(f"**{t_data['目標買値']}**")
                     m_col4.metric("RSI (過熱感)", f"{t_data['RSI(過熱感)']}%")
             
             st.markdown("---")
@@ -414,16 +425,19 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                     specs=[[{"secondary_y": True}], [{"secondary_y": True}]]
                 )
                 
-                # 日足
                 fig.add_trace(go.Candlestick(x=df_daily.index, open=df_daily['Open'], high=df_daily['High'], low=df_daily['Low'], close=df_daily['Close'], name="日足"), row=1, col=1, secondary_y=False)
                 fig.add_trace(go.Bar(x=df_daily.index, y=df_daily['Volume'], name="出来高", marker_color='rgba(150, 150, 150, 0.4)'), row=1, col=1, secondary_y=True)
                 
-                # 週足
                 if not df_weekly.empty:
                     fig.add_trace(go.Candlestick(x=df_weekly.index, open=df_weekly['Open'], high=df_weekly['High'], low=df_weekly['Low'], close=df_weekly['Close'], name="週足"), row=2, col=1, secondary_y=False)
                     fig.add_trace(go.Bar(x=df_weekly.index, y=df_weekly['Volume'], name="週出来高", marker_color='rgba(150, 150, 150, 0.4)'), row=2, col=1, secondary_y=True)
                 
                 fig.update_layout(height=800, xaxis_rangeslider_visible=False, xaxis2_rangeslider_visible=False)
+                
+                # 【修正】X軸の日付フォーマットをスッキリ表示
+                fig.update_xaxes(tickformat="%y/%m/%d", row=1, col=1)
+                fig.update_xaxes(tickformat="%y/%m", row=2, col=1)
+                
                 fig.update_yaxes(title_text="株価", secondary_y=False)
                 fig.update_yaxes(title_text="出来高", secondary_y=True, showgrid=False)
                 st.plotly_chart(fig, use_container_width=True)
@@ -439,7 +453,6 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
                 else:
                     is_uptrend = None
                 
-                # キャッシュデータからファンダメンタル指標を取得
                 per_str = f"{t_data['PER']}倍" if t_data and t_data['PER'] != "-" else "データなし"
                 pbr_str = f"{t_data['PBR']}倍" if t_data and t_data['PBR'] != "-" else "データなし"
                 div_str = f"{t_data['配当利回り(%)']}%" if t_data and t_data['配当利回り(%)'] != "-" else "データなし"
@@ -473,7 +486,6 @@ elif st.session_state.active_tab == "📈 マルチタイムフレーム":
 
                 st.info(analysis_text)
                 
-                # 【修正】ニュースAPIのバグ修正（Google News RSS使用）
                 st.markdown("### 📰 関連ニュース（最新ヘッドライン）")
                 news_data = get_google_news(t_data['銘柄名'] if t_data else t_mtf)
                 if news_data:
@@ -523,8 +535,6 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
         total_profit = 0
         win_count = 0
         warning_count = 0
-
-        # 【追加】複数目線の評価コメント格納用
         detailed_evaluations = []
 
         for idx, row in st.session_state.portfolio_df.iterrows():
@@ -579,7 +589,6 @@ elif st.session_state.active_tab == "💼 ポートフォリオ判定":
                     "損益率(%)": round(profit_rate, 2)
                 })
 
-                # 【追加】銘柄ごとの詳細な多角評価ロジック
                 eval_text = ""
                 target_price_20 = buy_price * 1.20
                 stop_loss_10 = buy_price * 0.90
